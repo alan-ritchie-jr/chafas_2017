@@ -3,13 +3,15 @@
 #################
 #install.packages("glmmTMB")
 #install.packages("ggeffects")
-#install.packages("TMB")
+#nstall.packages("TMB")
 #install.packages("sjPlot")
 #install.packages("blmeco")
 #install.packages("aods3")
 #install.packages("car")
 #install.packages("MCMCglmm")
+#install.packages("lme4")
 #### 
+
 library(aods3)
 library(blmeco)
 library(car)
@@ -27,6 +29,9 @@ seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
 
 seed_land$round<-as.factor(seed_land$round)
+seed_land$temp.start[seed_land$temp.start=="na"] <- 22.3 
+seed_land$temp.start<-as.numeric(levels(seed_land$temp.start))[seed_land$temp.start]
+
 # Create table containing:
 # PR
 # SR
@@ -36,13 +41,16 @@ seed_land$round<-as.factor(seed_land$round)
 # # flowers
 # prop.c
 # yday?
+# start temperature
+
 
 ##Let's make sure our continuous responses aren't collinear; 
-#code for corvif is located in zuur correlation script file
+#code for corvif is located in zuur_correlation script file
 # from Zuur 2010, "A protocol to avoid common statistical problems"
 
-#Z<-seed_land[,c("prop.c", "flowers", "yday", "fecund")]
-#corvif(Z)    
+
+Z<-plt[,c("yday","temp.start")]
+corvif(Z)    
 
 
 ### First create tabl:
@@ -60,20 +68,9 @@ plt<- seed_land %>%
             totov=sum(total.ovules),
             avg_totov=mean(total.ovules))
 plt$temp.start[plt$temp.start=="na"] <- 22.3 # some na temp values; subbed for nearby site
-plt$temp.start<-as.numeric(plt$temp.start)# make numeric
+plt$temp.start<-as.numeric(levels(plt$temp.start))[plt$temp.start]# make numeric
 
-plt_n1<- seed_land %>%
-  group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday)%>%
-  summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
-            polov=sum(poll_ovules),
-            avg_polov=mean(poll_ovules),
-            seeds=sum(total.seeds),
-            avg_seed=mean(total.seeds),
-            totov=sum(total.ovules),
-            avg_totov=mean(total.ovules))%>%
-  filter(fruit_count>1)
-  #now let's take these values and create a table where they're averaged and totaled over rounds
-
+#responses summed ignoring round
 plt_nr<-plt %>%
   group_by(prop.c,site,trmnt,ID)%>% 
   summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
@@ -86,33 +83,17 @@ plt_nr<-plt %>%
             avg_polov=mean(avg_polov),
             totov=sum(totov),
            avg_totov=mean(avg_totov))  
-######################################
-#### check differences at population level
-plt_nr_plot<-plt %>%
-  group_by(prop.c,site,trmnt)%>% 
-  summarise(frt=sum(fruit_count),plants=n_distinct(ID),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            seeds_plt=seeds/plants,
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov))  
-
 
 #### These are important figures!!!
 ### Seeds 
-ggplot(data=plt_nr, aes(prop.c,seeds, color=trmnt))+geom_point()+
+ggplot(data=plt, aes(prop.c,seeds, color=trmnt))+geom_point()+
 geom_smooth(method=lm)
 ### poll ovules
 ggplot(data=plt_nr, aes(prop.c,polov, color=trmnt))+geom_point()+
   geom_smooth(method=lm)
 ### seed  over time
-ggplot(data=plt,aes(prop.c,seeds, color=trmnt))+geom_point()+
-  geom_smooth(method=lm)+ facet_grid(.~round)
+ggplot(data=plt,aes(temp.start,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
 
 ggplot(data=plt,aes(trmnt,seeds, color=trmnt))+geom_boxplot()+
  facet_grid(.~round)
@@ -129,55 +110,51 @@ ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_point()+
   geom_smooth(method=lm)
 ggplot(data=plt_nr, aes(prop.c,(polov/totov), color=trmnt))+geom_point()+
   geom_smooth(method=lm)
+
+
 ####
 ####effects of starting temperature on treatments
-ggplot(data=plt, aes(temp.start,seeds, color=trmnt))+geom_point()+
-  geom_smooth(method=lm)
+ggplot(data=plt, aes(round,temp.start, group=round))+geom_boxplot()
 
 ### temperature effects hp slightly more than op, but unsure of significance
 ### this would make sense, because pollination would proceed as normal otherwise.
  ############
 #   models #
 ###########
-# using plt data frame
+
+# using plt data frame--> the sum of a plants fruit at each round is the unit of rep; Should only use site as random effect
 # let's model total seeds and poll_ovules first
 ### check random effects
+
 # total seed, number of fruit as offset
-smod_plt<-glmer.nb(seeds~trmnt*scale(prop.c)+scale(temp.start)+offset(log(fruit_count))+ (1|ID) , data=plt)
-
-summary(smod_plt)
-
 
 #total seed model using glmmTMB
-stmb_plt<-glmmTMB(seeds~trmnt*scale(prop.c) +scale(temp.start)+offset(log(fruit_count)) +(1|site/ID),family=nbinom1, data=plt) 
+stmb_plt1<-glmmTMB(seeds~trmnt*scale(prop.c)+scale(temp.start) +
+                  offset(log(fruit_count)) +
+                    (1|site/ID),family=nbinom1, data=plt) 
 
-summary(stmb_plt)
+summary(stmb_plt1)
+
 
 ### you can remove scaling with round
-stmb_plt<-glmmTMB(seeds~trmnt*prop.c + round+ scale(temp.start)+ offset(log(fruit_count)) +(1|site/ID),family=nbinom1, data=plt) 
+stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)=
+                   scale(temp.start)+ offset(log(fruit_count))+
+                    (1|site/ID),family=nbinom2, data=plt) 
 
-summary(stmb_plt)
+summary(stmb_plt2)
 ## both round or yday work, although yday  needs to be scaled. 
 ## effect of temp is very significant!
 
 
 ##total polov glmmTMB
-potmb_plt<-glmmTMB(polov~trmnt*prop.c + round+ offset(log(fruit_count))+(1|site/ID),family=nbinom1, data=plt) 
+potmb_plt<-glmmTMB(polov~trmnt*scale(prop.c) +scale(temp.start)+ 
+                     offset(log(fruit_count))+(1|site/ID),family=nbinom1, data=plt) 
 summary(potmb_plt)
 # same results with polov
 
 
-###now for pr and sr
-
-
-#first try on raw data, seed_land
-prmod<-glmer(poll_ovules/total.ovules~ trmnt*prop.c+fecund+scale(yday)+(1|site/ID), 
-                 family=binomial, weights=total.ovules,data=seed_land)
-summary(prmod)
-
-#Takeaway:
 #as number of flowers increase there's a decrease in the log odds of an ovule being pollinated
-plot(allEffects(prmod))
+plot(allEffects(stmb))
 plot(ggeffect(prmod,c("prop.c","trmnt")))
 plot(ggeffect(prmod,c("flowers","trmnt")))
 sjp.lmer(prmod,  type='re.qq')
