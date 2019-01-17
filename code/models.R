@@ -8,6 +8,7 @@
 #install.packages("blmeco")
 #install.packages("aods3")
 #install.packages("car")
+#install.packages("MCMCglmm")
 #### 
 library(aods3)
 library(blmeco)
@@ -21,7 +22,6 @@ library(sjmisc)
 library(sjlabelled)
 library(multcomp)
 library(effects)
-
 library(MCMCglmm)
 seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
@@ -45,12 +45,13 @@ seed_land$round<-as.factor(seed_land$round)
 #corvif(Z)    
 
 
-### First create table that for each plant at each round has response variables averaged
+### First create tabl:
+# for each plant at each round has response variables averaged
 ### the proportional responses can't be modeled directly
 ### nor will using non-integers (averaged values)
 ### instead we'll try using totals of the response variables to make the proportional responses
 plt<- seed_land %>%
-  group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday)%>%
+  group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday,temp.start)%>%
   summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
             polov=sum(poll_ovules),
             avg_polov=mean(poll_ovules),
@@ -58,6 +59,8 @@ plt<- seed_land %>%
             avg_seed=mean(total.seeds),
             totov=sum(total.ovules),
             avg_totov=mean(total.ovules))
+plt$temp.start[plt$temp.start=="na"] <- 22.3 # some na temp values; subbed for nearby site
+plt$temp.start<-as.numeric(plt$temp.start)# make numeric
 
 plt_n1<- seed_land %>%
   group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday)%>%
@@ -99,151 +102,27 @@ plt_nr_plot<-plt %>%
             totov=sum(totov),
             avg_totov=mean(avg_totov))  
 
-ggplot(data=plt_nr_plot, aes(prop.c,seeds, color=trmnt))+geom_point()+
-  geom_smooth(method=lm)
 
-ggplot(data=plt_nr_plot, aes(prop.c,seeds))+geom_point()+
-  geom_smooth(method=lm)
-
-ggplot(data=plt_nr_plot, aes(prop.c,seeds_plt, color=trmnt))+geom_point()+
-  geom_smooth(method=lm)
-ggplot(data=plt_nr_plot, aes(prop.c,seeds_plt))+geom_point()+
-  geom_smooth(method=lm)
-
-
-##############################################
-plt_avg<-plt %>%
-  group_by(prop.c,site,trmnt)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov))  
-
-Z<-plt_nr[,c("prop.c", "trtflw", "fecund")]
-corvif(Z)     
-
-## save this as a csv for later.
-write.csv(plt_nr,"data/plt_nr.csv")
-
-# drop all but round 3
-
-plt_n3<- seed_land %>%
-  group_by(site,prop.c,round,trmnt,ID,flowers, fecund)%>%
-  summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
-            polov=sum(poll_ovules),
-            avg_polov=mean(poll_ovules),
-            seeds=sum(total.seeds),
-            avg_seed=mean(total.seeds),
-            totov=sum(total.ovules),
-            avg_totov=mean(total.ovules))%>%
-filter(round==3)%>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov)) 
-
-#drop round 4
-plt_n4<- seed_land %>%
-  group_by(site,prop.c,round,trmnt,ID,flowers, yday,fecund)%>%
-  summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
-            polov=sum(poll_ovules),
-            avg_polov=mean(poll_ovules),
-            seeds=sum(total.seeds),
-            avg_seed=mean(total.seeds),
-            totov=sum(total.ovules),
-            avg_totov=mean(total.ovules))%>%
-  filter(round!=4)%>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov)) 
-Z<-plt_n4[,c("prop.c", "trtflw")]
-corvif(Z)     
-
-# drop braaten
-
-plt_nb<- plt %>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov))  %>%
-  filter(site!="braaten")
-
-# drop staples
-
-plt_nst<- plt %>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov))  %>%
-  filter(site!="staples")
-
-
-### a couple of plots of seeds/ovules
-ggplot(data=plt, aes(trmnt,(seeds/totov), color=trmnt))+geom_boxplot()+facet_grid(.~site)
-ggplot(data=plt_nr, aes(trmnt,(seeds/totov), color=trmnt))+geom_boxplot()+
-  facet_grid(.~reorder(site,prop.c))
-ggplot(data=plt_nr, aes(trmnt,(polov/totov), color=trmnt))+geom_boxplot()+
-  facet_grid(.~reorder(site,prop.c))
-
-ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_text(aes(label=ID))+
-  geom_smooth(method=lm)
-
-ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_point()+
-  geom_smooth(method=lm)
-
-ggplot(data=plt_nr, aes(trtflw,polov/totov), color=trmnt)+geom_point()+
-  geom_smooth(method=lm)
-ggplot(data=plt_nr, aes(fecund,polov/totov), color=trmnt)+geom_point()+
-  geom_smooth(method=lm)
-#######
 #### These are important figures!!!
+### Seeds 
 ggplot(data=plt_nr, aes(prop.c,seeds, color=trmnt))+geom_point()+
 geom_smooth(method=lm)
+### poll ovules
 ggplot(data=plt_nr, aes(prop.c,polov, color=trmnt))+geom_point()+
   geom_smooth(method=lm)
+### seed  over time
+ggplot(data=plt,aes(prop.c,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)+ facet_grid(.~round)
 
+ggplot(data=plt,aes(trmnt,seeds, color=trmnt))+geom_boxplot()+
+ facet_grid(.~round)
 
 #Show that if we ignore round/time effects (which show up as more significant in most models)
 # Prop.c doesn't really have an effect on seed or poll ovules, hp typically, but not always
 # had more
 
 
-###The problem with total ovules 
+###The problem with total ovules ####
 ### is that chamaecrista will mature HP fruit with fewer viable ovules in general
 ### (Fenster or bazazz)
 ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_point()+
@@ -251,58 +130,42 @@ ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_point()+
 ggplot(data=plt_nr, aes(prop.c,(polov/totov), color=trmnt))+geom_point()+
   geom_smooth(method=lm)
 ####
-####
+####effects of starting temperature on treatments
+ggplot(data=plt, aes(temp.start,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
 
+### temperature effects hp slightly more than op, but unsure of significance
+### this would make sense, because pollination would proceed as normal otherwise.
  ############
 #   models #
 ###########
-# Using full plt data frame (averages and totals for responses for plants, including round)
+# using plt data frame
 # let's model total seeds and poll_ovules first
-
-##total polov using glmer.nb
-pomod_plt<-glmer.nb(polov~trmnt*prop.c + trtflw+ (1|site/ID) , data=plt)
-
-summary(pomod_plt)
-## scaling issues
-
-#avg polov using glmer.nb
-avpomod_plt<-glmer.nb(polov~trmnt*prop.c + trtflw+ (1|site/ID) , data=plt)
-
-summary(avpomod_plt)
-# converge probs
-
-
-# total seed
-smod_plt<-glmer.nb(seeds~trmnt*prop.c + offset(trtflw)+ (1|site/ID) , data=plt)
+### check random effects
+# total seed, number of fruit as offset
+smod_plt<-glmer.nb(seeds~trmnt*scale(prop.c)+scale(temp.start)+offset(log(fruit_count))+ (1|ID) , data=plt)
 
 summary(smod_plt)
-# converg probs
 
-# avg seed
-avsmod_plt<-glmer.nb(avg_seed~trmnt*scale(prop.c) + offset(log(avg_totov))+ (1|site/ID) , data=plt)
-
-summary(avsmod_plt)
-# converge probs
 
 #total seed model using glmmTMB
-stmb_plt<-glmmTMB(seeds~trmnt*scale(prop.c) + scale(yday)+scale(fecund)+ offset(log(totov)) +(1|site/ID),family=nbinom1, data=plt) 
+stmb_plt<-glmmTMB(seeds~trmnt*scale(prop.c) +scale(temp.start)+offset(log(fruit_count)) +(1|site/ID),family=nbinom1, data=plt) 
 
 summary(stmb_plt)
-overdisp_fun(stmb_plt)
-## both round or yday work, although yday probably needs to be scaled. 
-## trtflowers and when treatment took place are significant, but not prop.c.
 
+### you can remove scaling with round
+stmb_plt<-glmmTMB(seeds~trmnt*prop.c + round+ scale(temp.start)+ offset(log(fruit_count)) +(1|site/ID),family=nbinom1, data=plt) 
 
-#avg
-avstmb_plt<-glmmTMB(avg_seed~trmnt*scale(prop.c)+ scale(yday)+ offset(log(avg_totov))+(1|site/ID),family=nbinom1, data=plt) 
-
-summary(avstmb_plt)
-## convergence issues; hessian matrix goof
+summary(stmb_plt)
+## both round or yday work, although yday  needs to be scaled. 
+## effect of temp is very significant!
 
 
 ##total polov glmmTMB
-potmb_plt<-glmmTMB(polov~trmnt*prop.c + round+ trtflw+(1|site/ID),family=nbinom1, data=plt) 
+potmb_plt<-glmmTMB(polov~trmnt*prop.c + round+ offset(log(fruit_count))+(1|site/ID),family=nbinom1, data=plt) 
 summary(potmb_plt)
+# same results with polov
+
 
 ###now for pr and sr
 
@@ -452,7 +315,7 @@ plot(ggpredict(potmb_nr, c("prop.c","trmnt")))
 ##################
 ### total polov/totov
 ######################
-prmod_nr<-glmer(polov~ trmnt*scale(prop.c)+scale(fecund)+offset(log(totov))+(1|site), 
+prmod_nr<-glmer(seeds~ trmnt*scale(prop.c)+offset(log(frt))+(1|site), 
                  family=poisson, data=plt_nr)
 summary(prmod_nr)# no convergence without scaling, but
 #scaling makes prop.c only marginally significant with interaction term included
