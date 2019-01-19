@@ -134,9 +134,9 @@ stmb_plt1<-glmmTMB(seeds~trmnt*scale(prop.c)+scale(temp.start) +
 summary(stmb_plt1)
 
 #not sure whether type II or III anova is appropriate to test fixed effects
-Anova(stmb_plt1, type= "III")
-
 # type III is the p value of the coefficient conditional on the other coefficients and the interaction!
+
+Anova(stmb_plt1, type= "III")
 
 drop1(stmb_plt1,test="Chisq")
 
@@ -161,6 +161,18 @@ stmb_plt1_CI_quad <- confint(stmb_plt1,method="Wald")
 stmb_plt1_CI_prof
 stmb_plt1_CI_quad
 
+###r2 approximation from https://stats.stackexchange.com/questions/95054/how-to-get-an-overall-p-value-and-effect-size-for-a-categorical-factor-in-a-mi
+r2.corr.mer <- function(m) {
+  lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
+  summary(lmfit)$r.squared
+}
+
+r2.corr.mer(stmb_plt1)
+
+#alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
+1-var(residuals(stmb_plt1))/(var(model.response(model.frame(stmb_plt1))))
+####
+
 ### parametric bootstrap CI from BBolker
 PBsimfun <- function(m0,m1,x=NULL) {
   if (is.null(x)) x <- simulate(m0)
@@ -171,12 +183,16 @@ PBsimfun <- function(m0,m1,x=NULL) {
   c(-2*(logLik(m0r)-logLik(m1r)))
 }
 
+
+### this was a parametric botstrap to generate CIs but it  didn't really wokr
 #reduced model to test against
 stmb_plt0<-glmmTMB(seeds~trmnt*scale(prop.c)+
                      offset(log(fruit_count)) +
                      (1|site/ID),family=nbinom1, data=plt) 
 set.seed(101)
 PBrefdist <- replicate(400,PBsimfun(stmb_plt0,stmb_plt1))
+#################
+
 
 ### alternative parameterization (see bolker glmm FAQ)
 stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)+
@@ -207,6 +223,11 @@ stmb_plt2_CI_prof <- confint(stmb_plt2)
 stmb_plt2_CI_quad <- confint(stmb_plt2,method="Wald")
 stmb_plt2_CI_prof
 stmb_plt2_CI_quad
+
+
+r2.corr.mer(stmb_plt2)
+#alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
+1-var(residuals(stmb_plt2))/(var(model.response(model.frame(stmb_plt2))))
 ####
 ## starting temp is most significant predictor
 # significantly colder days in rd 4 (and some in rd 3) impacted seed set
