@@ -10,6 +10,7 @@
 #install.packages("car")
 #install.packages("MCMCglmm")
 #install.packages("lme4")
+install.packages("pbkrtest")
 #### 
 
 library(aods3)
@@ -23,14 +24,14 @@ library(sjPlot)
 library(sjmisc)
 library(sjlabelled)
 library(multcomp)
-library(effects)
+library(pbkrtest)
 library(MCMCglmm)
 seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
 
 seed_land$round<-as.factor(seed_land$round)
-seed_land$temp.start[seed_land$temp.start=="na"] <- 22.3 
-seed_land$temp.start<-as.numeric(levels(seed_land$temp.start))[seed_land$temp.start]
+#seed_land$temp.start[seed_land$temp.start=="na"] <- 22.3 
+#seed_land$temp.start<-as.numeric(levels(seed_land$temp.start))[seed_land$temp.start]
 
 # Create table containing:
 # PR
@@ -118,81 +119,113 @@ ggplot(data=plt, aes(round,temp.start, group=round))+geom_boxplot()
 
 ### temperature effects hp slightly more than op, but unsure of significance
 ### this would make sense, because pollination would proceed as normal otherwise.
- ############
+############################### 
+
+############
 #   models #
 ###########
 
-# using plt data frame--> the sum of a plants fruit at each round is the unit of rep; Should only use site as random effect
-# let's model total seeds and poll_ovules first
-### check random effects
-
-# total seed, number of fruit as offset
-
-#total seed model using glmmTMB
+# total seed or pollinated ovules, number of fruit as offset
+#total seed model using glmmTMB (see Bolker GLMM FAQ for notes)
 stmb_plt1<-glmmTMB(seeds~trmnt*scale(prop.c)+scale(temp.start) +
                   offset(log(fruit_count)) +
                     (1|site/ID),family=nbinom1, data=plt) 
 
 summary(stmb_plt1)
 
+#not sure whether type II or III anova is appropriate to test fixed effects
+Anova(stmb_plt1, type= "III")
 
-### you can remove scaling with round
-stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)=
+# type III is the p value of the coefficient conditional on the other coefficients and the interaction!
+
+drop1(stmb_plt1,test="Chisq")
+
+#residuals
+ggplot(data = NULL, aes(y = resid(stmb_plt1, type = "pearson"),
+                        x = fitted(stmb_plt1))) + geom_point()
+qq.line = function(x) {
+  # following four lines from base R's qqline()
+  y <- quantile(x[!is.na(x)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+  return(c(int = int, slope = slope))
+}
+QQline = qq.line(resid(stmb_plt1, type = "pearson"))
+ggplot(data = NULL, aes(sample = resid(stmb_plt1, type = "pearson"))) +
+  stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
+
+#confidence intervals
+stmb_plt1_CI_prof <- confint(stmb_plt1)
+stmb_plt1_CI_quad <- confint(stmb_plt1,method="Wald")
+stmb_plt1_CI_prof
+stmb_plt1_CI_quad
+
+### parametric bootstrap CI from BBolker
+PBsimfun <- function(m0,m1,x=NULL) {
+  if (is.null(x)) x <- simulate(m0)
+  m0r <- try(refit(m0,x[[1]]),silent=TRUE)
+  if (inherits(m0r,"try-error")) return(NA)
+  m1r <- try(refit(m1,x[[1]]),silent=TRUE)
+  if (inherits(m1r,"try-error")) return(NA)
+  c(-2*(logLik(m0r)-logLik(m1r)))
+}
+
+#reduced model to test against
+stmb_plt0<-glmmTMB(seeds~trmnt*scale(prop.c)+
+                     offset(log(fruit_count)) +
+                     (1|site/ID),family=nbinom1, data=plt) 
+set.seed(101)
+PBrefdist <- replicate(400,PBsimfun(stmb_plt0,stmb_plt1))
+
+### alternative parameterization (see bolker glmm FAQ)
+stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)+
                    scale(temp.start)+ offset(log(fruit_count))+
                     (1|site/ID),family=nbinom2, data=plt) 
 
 summary(stmb_plt2)
-## both round or yday work, although yday  needs to be scaled. 
-## effect of temp is very significant!
+### add type 3
+Anova(stmb_plt2)
 
+
+ggplot(data = NULL, aes(y = resid(stmb_plt2, type = "pearson"),
+                        x = fitted(stmb_plt2))) + geom_point()
+qq.line = function(x) {
+  # following four lines from base R's qqline()
+  y <- quantile(x[!is.na(x)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+  return(c(int = int, slope = slope))
+}
+QQline = qq.line(resid(stmb_plt2, type = "pearson"))
+ggplot(data = NULL, aes(sample = resid(stmb_plt2, type = "pearson"))) +
+  stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
+
+#confidence intervals
+stmb_plt2_CI_prof <- confint(stmb_plt2)
+stmb_plt2_CI_quad <- confint(stmb_plt2,method="Wald")
+stmb_plt2_CI_prof
+stmb_plt2_CI_quad
+####
+## starting temp is most significant predictor
+# significantly colder days in rd 4 (and some in rd 3) impacted seed set
 
 ##total polov glmmTMB
 potmb_plt<-glmmTMB(polov~trmnt*scale(prop.c) +scale(temp.start)+ 
-                     offset(log(fruit_count))+(1|site/ID),family=nbinom1, data=plt) 
+                     offset(log(fruit_count))+
+                     (1|site/ID),family=nbinom1, data=plt) 
 summary(potmb_plt)
 # same results with polov
 
 
-#as number of flowers increase there's a decrease in the log odds of an ovule being pollinated
-plot(allEffects(stmb))
-plot(ggeffect(prmod,c("prop.c","trmnt")))
-plot(ggeffect(prmod,c("flowers","trmnt")))
-sjp.lmer(prmod,  type='re.qq')
-## drop interaction term, because the parameter is not significant for model fit
-
-# total seeds/ total ovules per plant, per round; incorporating julian day
-srmod<-glmer(total.seeds/total.ovules~ trmnt*I(prop.c/100)+I(flowers/100)*round+(1|site/ID), 
-              family=binomial, weights=total.ovules,data=seed_land)
-summary(srmod)
+### Plotting output
 
 
-### same model, but let's test if there's an interaction between # of flowers and yday and use scale
-### mean centering + scaling by standard deviation
-
-srmod_sc<-glmer(total.seeds/total.ovules~ trmnt*scale(prop.c)+flowers+scale(yday)+(1|site/ID), 
-             family=binomial, weights=total.ovules,data=seed_land)
-summary(srmod_sc)
-### no interaction between yday and flowers, so drop.
-
-srmodf_sc<-glmer(total.seeds/total.ovules~ trmnt*scale(prop.c)+fecund+scale(yday)+(1|site/ID), 
-                family=binomial, weights=total.ovules,data=seed_land)
-summary(srmodf_sc)
-overdisp_fun(srmodf_sc)
-## no interaction between yday and fecundity; also slightly better fit than flowers
-
-
-### scale has same results, but parameters may be a little easier to interpret
-plot(allEffects(srmod_sc))
-plot(ggeffect(srmod,c("prop.c","trmnt")))
-plot(ggeffect(srmod_sc,c("flowers","yday")))
-sjp.lmer(srmod,type='re.qq')
-## althought interaction is dropped, I think this is worth thinking about
-## more or less, later in the season 
-
-## so using seeds is 
+###### Old plotting code; may not work with glmTMB
 ### check for homogeneity, etc.
 op <- par(mfrow = c(2, 2), mar = c(5, 4, 1, 2))
-plot(prmod, add.smooth = FALSE, which = 1)
+plot(stmb_plt1, add.smooth = FALSE, which = 1)
 par(mfrow=c(1,1))
 residuals <- resid(prmod)
 plot(residuals)
@@ -207,143 +240,6 @@ plot(seed_land$round, residuals, xlab = "round",
 
 sjp.lmer(prmod,  type='re.qq')
 sjp.lmer(srmod,  type='re.qq')
-
-
-
-#Now try using plt dataframe
-### lowest AIC model includes julian day, which I left in the plt dataframe
-prmod_plt<-glmer(polov/totov~ trmnt*scale(prop.c)+scale(yday)+scale(fecund)+(ID|site), 
-                 family=binomial, weights=totov,data=plt)
-summary(prmod_plt)
-#Incorporating random slope shows that yday is the only significant parameter in the model
-
-### check for overdispersion
-overdisp_fun <- function(model) {
-  ## number of variance parameters in 
-  ##   an n-by-n variance-covariance matrix
-  vpars <- function(m) {
-    nrow(m)*(nrow(m)+1)/2
-  }
-  model.df <- sum(sapply(VarCorr(model),vpars))+length(fixef(model))
-  rdf <- nrow(model.frame(model))-model.df
-  rp <- residuals(model,type="pearson")
-  Pearson.chisq <- sum(rp^2)
-  prat <- Pearson.chisq/rdf
-  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
-  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
-}
-overdisp_fun(prmod_plt)
-### waaaaaaaaaaaaaaaay overdispersed
-
-## some plots that show possible overdispersion
-sjp.glmer(prmod_plt,  type='re.qq')
-plot(allEffects(prmod_plt))## huge confidence regions 
-sjp.glmer(prmod_plt, facet.grid=FALSE, sort="sort.all")
-sjp.glmer(prmod_plt, type = "fe", facet.grid=FALSE)## what does huge ci mean?
-
-sjp.glmer(srmod_plt,  type='re.qq')
-
-### Sr plots
-
-##  
-srmodf_plt<-glmer(seeds/totov~ trmnt*scale(prop.c)+scale(fecund)+scale(yday)+(1|site/ID), 
-                  family=binomial, weights=totov, data=plt)
-summary(srmodf_plt)
-## test for overdispersion
-overdisp_fun(srmodf_plt)
-### more overdispersion
-
-### some plots
-plot(allEffects(srmodf_plt))
-  
-sjp.glmer(srmodf_plt,  type='re.qq')
-
-# These are more or less the same results as the PR model
-
-
-### Now let's sum a plants seeds, polovs, and totovs over all rounds.
-### So instead of 4 or less observations per plant, it's 1 observation per plant.
-
-seed_nr<-glmer.nb(seeds~trmnt*scale(prop.c)+offset(log(trtflw))+(1|site/ID), data=plt_nr)
-summary(seed_nr) #failure to converge
-
-
-#Nbinom glmm using glmmTMB
-seedtmb_nr<-glmmTMB(seeds~trmnt*prop.c+scale(fecund)+ offset(log(trtflw))+(1|site/ID),family=nbinom1, data=plt_nr)
-summary(seedtmb_nr)#this model comes out the same using a gaussian distribution
-## only trtlowers significant predictor for total seeds
-
-plot(ggpredict(seedtmb_nr, c("trtflw","trmnt")))
-plot(ggpredict(seedtmb_nr, c("prop.c","trmnt")))
-
-#this model comes out the same using a gaussian distribution
-
-### trtflw significant, but this is using total seeds collected from the plant
-### so more trtflw=more seeds versus ag actually having an effect
-
-#avg seed doesn't converge
-potmb_nr<-glmmTMB(polov~trmnt*prop.c+trtflw+(1|site/ID),family=nbinom1,data=plt_nr)
-summary(potmb_nr)
-plot(ggpredict(potmb_nr, c("trtflw","trmnt")))
-plot(ggpredict(potmb_nr, c("prop.c","trmnt")))
-## doesn't converge using fruit removed, probably because there are some really high numbers
-
-
-##################
-### total polov/totov
-######################
-prmod_nr<-glmer(seeds~ trmnt*scale(prop.c)+offset(log(frt))+(1|site), 
-                 family=poisson, data=plt_nr)
-summary(prmod_nr)# no convergence without scaling, but
-#scaling makes prop.c only marginally significant with interaction term included
-#trtflw significant for # of successes
-overdisp_fun(prmod_nr) #  a little overdispersed
-
-plot(allEffects(prmod_nr))
-plot(ggeffect(prmod_nr,c("prop.c", "trmnt"))) ### about the same.
-plot(ggeffect(srmod_nr,c("prop.c", "trmnt")))
-plot(ggeffect(srmod_nr,c("trtflw", "trmnt")))
-
-######################
-### total seed/totov
-######################
-
-
-### scale function instead of manually scaling
-srmod_nb<-glmmTMB(seeds~ trmnt*scale(prop.c)+fecund+offset(log(totov))+(1|site),
-                  family=nbinom1, data=plt_nr)
-### drop ID level random effect since there's only one observation per plant
-### I think this may
-summary(srmod_nb)### overdispersed
-
-
-#compare overdispersion measures
-overdisp_fun(srmod_nb)### model looks good
-gof(srmod_nrsc)
-sum(residuals(srmod_nrsc,"pearson")^2)# 
-
-ggeffect(srmod_nb, c("trmnt","prop.c"))
-
-plot(srmod_nb, add.smooth = FALSE, which = 1)
-par(mfrow=c(1,1))
-residuals <- resid(srmod_nb)
-plot(residuals)
-
-plot(plt_nr$prop.c, residuals, xlab = "% Ag",
-     ylab = "Residuals")
-plot(plt_nr$trmnt, residuals, xlab = "trmnt",
-     ylab = "Residuals")
-plot(plt_nr$fecund, residuals, xlab = "fecund",
-     ylab = "Residuals")
-plot(plt_nr$trtflw, residuals, xlab = "trtflw",
-     ylab = "Residuals")
-qqnorm(residuals)
-qqline(residuals)
-
-
-### effect plots
-plot(srmod_nb)
-
 
 
 
