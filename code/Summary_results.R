@@ -52,54 +52,6 @@ ggplot(flower_tbl, aes(trmnt ,frt_loss, color=trmnt)) +geom_jitter()+
   labs(x="Treatment" ,y="Fruit Loss")+
   ggtitle("Average Fruit Loss by Treatment")
 
-mean(flower_tbl$n_flowers)
-median(flower_tbl$n_fruit)
-
-median(flower_tbl$frt_loss)
-
-1-(mean(flower_tbl$n_fruit/mean(flower_tbl$n_flowers)))
-
-# plots for fig 2. Boxplots of two treatments
-
-#fruits per plant
-seed_land%>%
-group_by(ID,trmnt)%>%
-  summarize(n_fruit=n())%>%
-  ggplot(aes(trmnt ,n_fruit)) +geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="Fruit per plant")+
-  ggtitle("Fig. 2a: Fruit per Plant by Treatment")
-#seeds per fruit per plant
-seed_land%>%
-  ggplot(aes(trmnt ,total.seeds)) +geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="Seed per fruit")+
-  ggtitle("Fig. 2b: Seed per Fruit by Treatment")
-#total seeds produced across all fruits collected for a plant 
-seed_land%>%group_by(trmnt, ID)%>%
-  summarize(sum_seed=sum(total.seeds))%>%
-  ggplot(aes(trmnt ,sum_seed ))+geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="Total Seeds Produced")+
-  ggtitle("Fig. 2c: Total Seed per Plant by Treatment")
-
-#supplement table 1
-#% treated fruit lost
-seed_land%>%group_by(trmnt,ID,round)%>%
-  summarize(n_fruit=n(), n_flowers=(sum(flowers)/n()))%>%
-  group_by(trmnt,ID)%>%
-  summarize(sum_fruit=sum(n_fruit), sum_flowers=sum(n_flowers),
-            fruit_loss=1-(sum_fruit)/(sum_flowers))%>%
-  ggplot(aes(trmnt ,fruit_loss))+geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="% Treated Fruit Lost per Plant")+
-  ggtitle("Fig. S1: % Treated Fruit Lost by Treatment")
-#supplement table 2
-# # fruit removed by trmnt
-seed_land%>%
-  group_by(trmnt,ID,round)%>%
-  summarize(frt_rem=(sum(frt_removed))/n())%>%
-  group_by(trmnt,ID)%>%
-  summarize(tot_frt_rem=sum(frt_rem))%>%
-  ggplot(aes(trmnt ,tot_frt_rem)) +geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="Untreated Fruit Removed per Plant")+
-  ggtitle("Fig. S2: Untreated Fruit Removed by Treatment")
 ## table for untreated frt removal
 mean_frt_rem<-seed_land%>%
   group_by(trmnt,ID,round)%>%
@@ -109,8 +61,58 @@ mean_frt_rem<-seed_land%>%
   group_by(trmnt)%>%
   summarize(mean_frt_rem=mean(tot_frt_rem), med_frt_rem=median(tot_frt_rem))
 
-##supplement 3
-# 3a
+### PLOTS####
+
+
+
+# fig 2. Boxplots of two treatments
+
+#total seeds produced across all fruits collected for a plant 
+seed_land%>%group_by(trmnt, ID)%>%
+  summarize(sum_seed=sum(total.seeds))%>%
+  ggplot(aes(trmnt ,sum_seed ))+geom_boxplot()+ theme_bw()+
+  labs(x="Treatment" ,y="Total Seeds Produced")+
+  ggtitle("Fig. 2: Total Seed per Plant by Treatment")
+####
+
+### Supplemental plots####
+
+#fruits per plant
+seed_land%>%
+group_by(ID,trmnt)%>%
+  summarize(n_fruit=n())%>%
+  ggplot(aes(trmnt ,n_fruit)) +geom_boxplot()+ theme_bw()+
+  labs(x="Treatment" ,y="Fruit per plant")+
+  ggtitle("Fig. 2a: # Fruit per Plant by Treatment")
+#seeds per fruit per plant
+seed_land%>%
+  ggplot(aes(trmnt ,total.seeds)) +geom_boxplot()+ theme_bw()+
+  labs(x="Treatment" ,y="Seed per fruit")+
+  ggtitle("Fig. 2b: # Seed per Fruit by Treatment")
+
+
+#% treated fruit lost
+seed_land%>%group_by(trmnt,ID,round)%>%
+  summarize(n_fruit=n(), n_flowers=(sum(flowers)/n()))%>%
+  group_by(trmnt,ID)%>%
+  summarize(sum_fruit=sum(n_fruit), sum_flowers=sum(n_flowers),
+            fruit_loss=1-(sum_fruit)/(sum_flowers))%>%
+  ggplot(aes(trmnt ,fruit_loss))+geom_boxplot()+ theme_bw()+
+  labs(x="Treatment" ,y="% Treated Fruit Lost per Plant")+
+  ggtitle("Fig. S1: % Treated Fruit Lost by Treatment")
+#supplement table 
+
+# # fruit removed by trmnt
+seed_land%>%
+  group_by(trmnt,ID,round)%>%
+  summarize(frt_rem=(sum(frt_removed))/n())%>%
+  group_by(trmnt,ID)%>%
+  summarize(tot_frt_rem=sum(frt_rem))%>%
+  ggplot(aes(trmnt ,tot_frt_rem)) +geom_boxplot()+ theme_bw()+
+  labs(x="Treatment" ,y="Untreated Fruit Removed per Plant")+
+  ggtitle("Fig. S2: # Untreated Fruit Removed by Treatment")
+
+
 ## flower production total
 seed_land%>%group_by(trmnt,ID,round)%>%
   summarize(n_fruit=n(), n_flowers=(sum(flowers)/n()))%>%
@@ -119,7 +121,10 @@ seed_land%>%group_by(trmnt,ID,round)%>%
             fruit_loss=1-(sum_fruit)/(sum_flowers))%>%
   ggplot(aes(trmnt ,sum_flowers))+geom_boxplot()+ theme_bw()+
   labs(x="Treatment" ,y="Flowers Treated per Plant")+
-  ggtitle("Fig. S3a: Flowers Treated by Treatment")
+  ggtitle("Fig. S3a: # Flowers Treated by Treatment")
+
+
+
 #3b
 ## flower production by round
 seed_land%>%group_by(trmnt,ID,round)%>%
@@ -130,9 +135,7 @@ theme_bw()+
   labs(x="Treatment" ,y="Flowers Treated per Plant")+
   ggtitle("Fig. S3b: Flowers Treated by Treatment per Round")
   
-  
-  
-  
+ ### didn't really change
   
   ##############
 ###############################
