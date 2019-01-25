@@ -1,26 +1,34 @@
 ###################
 ###Seed models####
 #################
-#remove.packages(c("TMB","glmmTMB","lme4"))
-#install.packages("TMB", type='source')
 #install.packages("glmmTMB")
 #install.packages("ggeffects")
+#nstall.packages("TMB")
 #install.packages("sjPlot")
 #install.packages("blmeco")
 #install.packages("aods3")
 #install.packages("car")
 #install.packages("MCMCglmm")
 #install.packages("lme4")
-#install.packages("pbkrtest")\
-#install.packages("Matrix")
-####
+#install.packages("pbkrtest")
+#install.packages("effects")
+#install.packages("merTools")
+
+#### 
 library(TMB)
+library(aods3)
+library(blmeco)
 library(car)
 library(glmmTMB)
-library(lme4)
 library(ggeffects)
+library(lme4)
 library(tidyverse)
-
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(multcomp)
+library(effects)
+library(merTools)
 seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
 
@@ -28,6 +36,25 @@ seed_land$round<-as.factor(seed_land$round)
 #seed_land$temp.start[seed_land$temp.start=="na"] <- 22.3 
 #seed_land$temp.start<-as.numeric(levels(seed_land$temp.start))[seed_land$temp.start]
 
+# Create table containing:
+# PR
+# SR
+# Seed
+# Poll Ovs
+# Fecund
+# # flowers
+# prop.c
+# yday?
+# start temperature
+
+
+##Let's make sure our continuous responses aren't collinear; 
+#code for corvif is located in zuur_correlation script file
+# from Zuur 2010, "A protocol to avoid common statistical problems"
+
+
+Z<-plt[,c("yday","temp.start")]
+corvif(Z)    
 
 
 ### First create tabl:
@@ -61,18 +88,62 @@ plt_nr<-plt %>%
             totov=sum(totov),
            avg_totov=mean(avg_totov))  
 
+#### These are important figures!!!
+### Seeds 
+ggplot(data=plt, aes(prop.c,seeds, color=trmnt))+geom_point()+
+geom_smooth(method=lm)
+### poll ovules
+ggplot(data=plt_nr, aes(prop.c,polov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+### seed  over time
+ggplot(data=plt,aes(temp.start,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+ggplot(data=plt,aes(trmnt,seeds, color=trmnt))+geom_boxplot()+
+ facet_grid(.~round)
+
+#Show that if we ignore round/time effects (which show up as more significant in most models)
+# Prop.c doesn't really have an effect on seed or poll ovules, hp typically, but not always
+# had more
+
+
+###The problem with total ovules ####
+### is that chamaecrista will mature HP fruit with fewer viable ovules in general
+### (Fenster or bazazz)
+ggplot(data=plt_nr, aes(prop.c,(seeds/totov), color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+ggplot(data=plt_nr, aes(prop.c,(polov/totov), color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+
+####
+####effects of starting temperature on treatments
+ggplot(data=plt, aes(round,temp.start, group=round))+geom_boxplot()
+
+### temperature effects hp slightly more than op, but unsure of significance
+### this would make sense, because pollination would proceed as normal otherwise.
+############################### 
+
 ############
 #   models #
 ###########
 
 # total seed or pollinated ovules, number of fruit as offset
 #total seed model using glmmTMB (see Bolker GLMM FAQ for notes)
-stmb_plt1<-glmmTMB(seeds~trmnt*prop.c +
-                  offset(log(fruit_count)) +
-                    (1|site/ID),family=nbinom1, data=plt) 
 
+
+#using glmmTMB
+stmb_plt1<-glmmTMB(seeds~(trmnt)*scale(prop.c)+
+                           offset(log(fruit_count)) +
+                           (1|site/ID),family=nbinom1, data=plt) 
 summary(stmb_plt1)
-fixef(stmb_plt1)
+ranef(stmb_plt1)
+
+### plotting predicted values
+ggplot(plt, aes(x = prop.c, y = seeds, colour = trmnt)) +
+  geom_point() +
+
+
 #not sure whether type II or III anova is appropriate to test fixed effects
 # type III is the p value of the coefficient conditional on the other coefficients and the interaction!
 
@@ -80,7 +151,7 @@ Anova(stmb_plt1, type= "III")
 
 drop1(stmb_plt1,test="Chisq")
 
-#residuals
+#residuals-- not sure whether this is necessary or interpretable
 ggplot(data = NULL, aes(y = resid(stmb_plt1, type = "pearson"),
                         x = fitted(stmb_plt1))) + geom_point()
 qq.line = function(x) {
@@ -95,11 +166,13 @@ QQline = qq.line(resid(stmb_plt1, type = "pearson"))
 ggplot(data = NULL, aes(sample = resid(stmb_plt1, type = "pearson"))) +
   stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
 
+
 #confidence intervals
 stmb_plt1_CI_prof <- confint(stmb_plt1)
-stmb_plt1_CI_quad <- confint(stmb_plt1,method="wald")
+stmb_plt1_CI_quad <- confint(stmb_plt1,method="Wald")
 stmb_plt1_CI_prof
 stmb_plt1_CI_quad
+
 
 ###r2 approximation from https://stats.stackexchange.com/questions/95054/how-to-get-an-overall-p-value-and-effect-size-for-a-categorical-factor-in-a-mi
 r2.corr.mer <- function(m) {
@@ -113,22 +186,30 @@ r2.corr.mer(stmb_plt1)
 1-var(residuals(stmb_plt1))/(var(model.response(model.frame(stmb_plt1))))
 ####
 
-### parametric bootstrap CI from BBolker
-PBsimfun <- function(m0,m1,x=NULL) {
-  if (is.null(x)) x <- simulate(m0)
-  m0r <- try(refit(m0,x[[1]]),silent=TRUE)
-  if (inherits(m0r,"try-error")) return(NA)
-  m1r <- try(refit(m1,x[[1]]),silent=TRUE)
-  if (inherits(m1r,"try-error")) return(NA)
-  c(-2*(logLik(m0r)-logLik(m1r)))
-}
+### plot fitted values for response
+#conditioned on random effects
+theme_set(theme_bw())
+plot_model(stmb_plt1,type="pred",terms=c("prop.c","trmnt"), 
+           pred.type="re", show.data = TRUE,colors="bw")
 
+#conditioned on fixed effects 
+theme_set(theme_bw())
+plot_model(stmb_plt1,type="pred",terms=c("prop.c","trmnt"),
+           pred.type="fe", show.data=TRUE, colors="bw")
 
-#################
+#conditioning on fixed effects narrows CIs
+#Info on how "pred" works:
+#https://www.rdocumentation.org/packages/ggeffects/versions/0.8.0/topics/ggaverage
 
+# other model types
+plot_model(stmb_plt1, type="re",show.values=TRUE)+ylim(-.5,.5)
+plot_model(stmb_plt1,type="est")
+p[[2]]+ylim(-.5,.5)
 
+##########
 ### alternative parameterization (see bolker glmm FAQ)
-stmb_plt2<-glmmTMB(seeds~trmnt*prop.c+ offset(log(fruit_count))+
+stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)+
+                   scale(temp.start)+ offset(log(fruit_count))+
                     (1|site/ID),family=nbinom2, data=plt) 
 
 summary(stmb_plt2)
@@ -174,38 +255,6 @@ summary(potmb_plt)
 
 ### Plotting output
 
-
-###### Old plotting code; may not work with glmTMB
-### check for homogeneity, etc.
-op <- par(mfrow = c(2, 2), mar = c(5, 4, 1, 2))
-plot(stmb_plt1, add.smooth = FALSE, which = 1)
-par(mfrow=c(1,1))
-residuals <- resid(prmod)
-plot(residuals)
-plot(seed_land$flowers, residuals, xlab = "trtflw",
-     ylab = "Residuals")
-plot(seed_land$prop.c, residuals, xlab = "% Ag",
-     ylab = "Residuals")
-plot(seed_land$trmnt, residuals, xlab = "trmnt",
-     ylab = "Residuals")
-plot(seed_land$round, residuals, xlab = "round",
-     ylab = "Residuals")
-
-sjp.lmer(prmod,  type='re.qq')
-sjp.lmer(srmod,  type='re.qq')
-
-
-
-### other gosh dern plotting methods
-
-lattice::xyplot(seeds~trmnt| site, groups=site, data=plt, type=c('p','r'), auto.key=F)
-
-lattice::xyplot(seeds~trmnt| site, groups=site, data=plt_nr, type=c('p','r'), auto.key=F)
-
-lattice::xyplot((seeds/totov)~trmnt| site, groups=site, data=plt, type=c('p','r'), auto.key=F)
-
-lattice::xyplot((seeds/totov)~trmnt| site, groups=site, data=plt_nr, type=c('p','r'), auto.key=F)
-``
 
 
 
