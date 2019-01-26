@@ -140,8 +140,7 @@ summary(stmb_plt1)
 ranef(stmb_plt1)
 
 ### plotting predicted values
-ggplot(plt, aes(x = prop.c, y = seeds, colour = trmnt)) +
-  geom_point() +
+
 
 
 #not sure whether type II or III anova is appropriate to test fixed effects
@@ -188,23 +187,50 @@ r2.corr.mer(stmb_plt1)
 
 ### plot fitted values for response
 #conditioned on random effects
-theme_set(theme_bw())
-plot_model(stmb_plt1,type="pred",terms=c("prop.c","trmnt"), 
-           pred.type="re", show.data = TRUE,colors="bw")
+#### Try ggeffects and plot function??
 
-#conditioned on fixed effects 
-theme_set(theme_bw())
-plot_model(stmb_plt1,type="pred",terms=c("prop.c","trmnt"),
-           pred.type="fe", show.data=TRUE, colors="bw")
+mydf<-ggpredict(stmb_plt1, terms = c("prop.c","trmnt"),type="fe")
+ggplot(mydf, aes(x, predicted,shape=group)) + geom_line()+facet_wrap(~group)
 
-#conditioning on fixed effects narrows CIs
-#Info on how "pred" works:
+
+#Plotting predicted effect and actual data
+#Used sjPlot package
+#use get_model_data to predict fitted values for hp and op at each level of % ag (prop.c)
+#conditioned on either fixed or random effects
+#fixed effects have narrower CIs
+#Info on how this works:
 #https://www.rdocumentation.org/packages/ggeffects/versions/0.8.0/topics/ggaverage
 
-# other model types
-plot_model(stmb_plt1, type="re",show.values=TRUE)+ylim(-.5,.5)
-plot_model(stmb_plt1,type="est")
-p[[2]]+ylim(-.5,.5)
+### get_model_data + ggplot version
+theme_set(theme_bw())
+#run get_model_data to extract ggplot usable output
+p<-get_model_data(stmb_plt1,type="pred",terms=c("prop.c","trmnt"), 
+           pred.type="re", colors= "bw",ci.lvl= .95)
+#re=random effect conditioned 
+
+
+### make separate dataframes for CI for plot
+php<-p%>%filter(group=="hp")
+pop<-p%>%filter(group=="op")
+
+###make plot
+ggplot(data=plt,aes(prop.c, seeds))+
+  geom_point(aes(shape=trmnt),position="jitter")+
+  geom_line(data=p, aes(x, predicted,linetype=group))+
+geom_ribbon(data=php,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+  geom_ribbon(data=pop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+labs(shape="Treatment",linetype="Predicted Response")+
+  xlab("% Agriculture")+ylab("Seeds Produced")+
+  ggtitle("Effect of % Agriculture on Seed Production",
+          subtitle="Predicted Response vs. Data")
+
+#Note: I haven't figured out how to facet both the data and the predicted values by treatment
+
+
+
+# other model types available through this package
+plot_model(stmb_plt1,type="est") #forest plot of parameter estimates
+
 
 ##########
 ### alternative parameterization (see bolker glmm FAQ)
