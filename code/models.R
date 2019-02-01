@@ -130,17 +130,21 @@ ggplot(data=plt, aes(round,temp.start, group=round))+geom_boxplot()
 
 # total seed or pollinated ovules, number of fruit as offset
 #total seed model using glmmTMB (see Bolker GLMM FAQ for notes)
-
-
-#using glmmTMB
 stmb_plt1<-glmmTMB(seeds~(trmnt)*scale(prop.c)+
-                           offset(log(fruit_count)) +
-                           (1|site/ID),family=nbinom1, data=plt) 
+                     offset(log(fruit_count)) +
+                     (1|site/ID),family=nbinom1, data=plt) 
+
+# means parameterization
+stmb_plt_means<-glmmTMB(seeds~(trmnt-1)*scale(prop.c)+
+         offset(log(fruit_count)) + (1|site/ID),family=nbinom1, data=plt)
+
 summary(stmb_plt1)
+summary(stmb_plt_means)
 ranef(stmb_plt1)
 
-### plotting predicted values
+#very similar results with or without ID random effect
 
+### plotting predicted values
 
 
 #not sure whether type II or III anova is appropriate to test fixed effects
@@ -153,6 +157,10 @@ drop1(stmb_plt1,test="Chisq")
 #residuals-- not sure whether this is necessary or interpretable
 ggplot(data = NULL, aes(y = resid(stmb_plt1, type = "pearson"),
                         x = fitted(stmb_plt1))) + geom_point()
+
+#no ID random effect 
+ggplot(data = NULL, aes(y = resid(stmb_plt_noIDre, type = "pearson"),
+                        x = fitted(stmb_plt_noIDre))) + geom_point()
 qq.line = function(x) {
   # following four lines from base R's qqline()
   y <- quantile(x[!is.na(x)], c(0.25, 0.75))
@@ -161,18 +169,25 @@ qq.line = function(x) {
   int <- y[1L] - slope * x[1L]
   return(c(int = int, slope = slope))
 }
+#nested ID re
 QQline = qq.line(resid(stmb_plt1, type = "pearson"))
 ggplot(data = NULL, aes(sample = resid(stmb_plt1, type = "pearson"))) +
   stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
-
+#no nested ID re: doesnt fit the qqline quite as well
+QQline = qq.line(resid(stmb_plt_noIDre, type = "pearson"))
+ggplot(data = NULL, aes(sample = resid(stmb_plt_noIDre, type = "pearson"))) +
+  stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
 
 #confidence intervals
 stmb_plt1_CI_prof <- confint(stmb_plt1)
 stmb_plt1_CI_quad <- confint(stmb_plt1,method="Wald")
 stmb_plt1_CI_prof
 stmb_plt1_CI_quad
-
-
+#means parameterization
+stmb_pltmeans_CI_prof <- confint(stmb_plt_means)
+stmb_pltmeans_CI_quad <- confint(stmb_plt_means,method="Wald")
+stmb_pltmeans_CI_quad
+stmb_pltmeans_CI_prof
 ###r2 approximation from https://stats.stackexchange.com/questions/95054/how-to-get-an-overall-p-value-and-effect-size-for-a-categorical-factor-in-a-mi
 r2.corr.mer <- function(m) {
   lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
