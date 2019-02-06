@@ -2,16 +2,14 @@
 ###Seed models####
 #################
 install.packages("glmmTMB")
-#install.packages("ggeffects")
-#nstall.packages("TMB")
+install.packages("ggeffects")
 install.packages("sjPlot")
-#install.packages("blmeco")
-#install.packages("aods3")
-#install.packages("car")
-#install.packages("MCMCglmm")
-#install.packages("lme4")
-#install.packages("pbkrtest")\
-#install.packages("Matrix")
+install.packages("blmeco")
+install.packages("aods3")
+install.packages("car")
+install.packages("lme4")
+install.packages("Matrix")
+install.packages("snakecase")
 ####
 
 #Dan start here; run lines 20-45
@@ -83,7 +81,8 @@ stmb_plt1_CI_quad
 theme_set(theme_bw())
 #run get_model_data to extract ggplot usable output
 p<-get_model_data(stmb_plt1,type="pred",terms=c("prop.c","trmnt"), 
-                  pred.type="re", colors= "bw",ci.lvl= .95)
+                  pred.type="re", colors= "bw",ci.lvl= .95) 
+
 #re=random effect conditioned 
 
 
