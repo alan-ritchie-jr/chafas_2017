@@ -144,6 +144,22 @@ theme_bw()+
   ggtitle("Fig. S3b: Flowers Treated by Treatment per Round")
   
  ### didn't really change
+
+
+#### These are important figures!!!
+### Seeds 
+ggplot(data=plt, aes(prop.c,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+### poll ovules
+ggplot(data=plt_nr, aes(prop.c,polov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+### seed  over time
+ggplot(data=plt,aes(temp.start,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+ggplot(data=plt,aes(trmnt,seeds, color=trmnt))+geom_boxplot()+
+  facet_grid(.~round)
+
   
   ##############
 ###############################

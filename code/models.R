@@ -1,11 +1,10 @@
 ###################
 ###Seed models####
 #################
-#remove.packages(c("TMB","glmmTMB","lme4"))
-#install.packages("TMB", type='source')
-#install.packages("glmmTMB")
+install.packages("glmmTMB")
 #install.packages("ggeffects")
-#install.packages("sjPlot")
+#nstall.packages("TMB")
+install.packages("sjPlot")
 #install.packages("blmeco")
 #install.packages("aods3")
 #install.packages("car")
@@ -15,29 +14,28 @@
 #install.packages("Matrix")
 ####
 
-#Dan start here; run lines 20-67
+#Dan start here; run lines 20-45
 
+# These are all needed for s
 library(TMB)
+library(aods3)
+library(blmeco)
 library(car)
 library(glmmTMB)
 library(lme4)
-library(ggeffects)
 library(tidyverse)
+library(sjPlot)
+library(ggeffects)
+library(sjlabelled)
+library(snakecase)
 
 seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
 
 seed_land$round<-as.factor(seed_land$round)
-#seed_land$temp.start[seed_land$temp.start=="na"] <- 22.3 
-#seed_land$temp.start<-as.numeric(levels(seed_land$temp.start))[seed_land$temp.start]
 
 
-
-### First create tabl:
-# for each plant at each round has response variables averaged
-### the proportional responses can't be modeled directly
-### nor will using non-integers (averaged values)
-### instead we'll try using totals of the response variables to make the proportional responses
+# summary table
 plt<- seed_land %>%
   group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday,temp.start)%>%
   summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
@@ -47,32 +45,17 @@ plt<- seed_land %>%
             avg_seed=mean(total.seeds),
             totov=sum(total.ovules),
             avg_totov=mean(total.ovules))
-plt$temp.start[plt$temp.start=="na"] <- 22.3 # some na temp values; subbed for nearby site
-plt$temp.start<-as.numeric(levels(plt$temp.start))[plt$temp.start]# make numeric
 
-#responses summed ignoring round
-plt_nr<-plt %>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-           avg_totov=mean(avg_totov))  
 
 ############
 #   models #
 ###########
 
 
-# Dan run 75-85
+# Dan run 57-105
 
 # total seed or pollinated ovules, number of fruit as offset
-stmb_plt1<-glmmTMB(seeds~trmnt*prop.c +
+stmb_plt1<-glmmTMB(seeds~trmnt*scale(prop.c) +
                   offset(log(fruit_count)) +
                     (1|site/ID),family=nbinom1, data=plt) 
 
@@ -84,7 +67,52 @@ stmb_plt1_CI_quad <- confint(stmb_plt1,method="wald")
 stmb_plt1_CI_prof
 stmb_plt1_CI_quad
 
-#Dan after this point its mdoel assessment code
+
+
+#Plotting predicted effect and actual data
+
+
+#Used sjPlot package and ggeffects
+#use get_model_data to predict fitted values for hp and op at each level of % ag (prop.c)
+#conditioned on either fixed or random effects
+#fixed effects have narrower CIs
+#Info on how this works:
+#https://www.rdocumentation.org/packages/ggeffects/versions/0.8.0/topics/ggaverage
+
+### get_model_data + ggplot version
+theme_set(theme_bw())
+#run get_model_data to extract ggplot usable output
+p<-get_model_data(stmb_plt1,type="pred",terms=c("prop.c","trmnt"), 
+                  pred.type="re", colors= "bw",ci.lvl= .95)
+#re=random effect conditioned 
+
+
+### make separate dataframes for CI for plot
+php<-p%>%filter(group=="hp")
+pop<-p%>%filter(group=="op")
+
+###make plot
+ggplot(data=plt,aes(prop.c, seeds))+
+  geom_point(aes(shape=trmnt),position="jitter")+
+  geom_line(data=p, aes(x, predicted,linetype=group))+
+  geom_ribbon(data=php,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+  geom_ribbon(data=pop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+  labs(shape="Treatment",linetype="Predicted Response")+
+  xlab("% Agriculture")+ylab("Seeds Produced")+
+  ggtitle("Effect of % Agriculture on Seed Production",
+          subtitle="Predicted Response vs. Data")
+
+#Note: I haven't figured out how to facet both the data and the predicted values by treatment
+
+
+# other model types available through this package
+plot_model(stmb_plt1,type="est") #forest plot of parameter estimates
+
+
+
+#Dan after this point its mdoel assessment code 
+
+
 
 
 # Test of significance of fixed effects using 
@@ -121,11 +149,21 @@ r2.corr.mer(stmb_plt1)
 #alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
 1-var(residuals(stmb_plt1))/(var(model.response(model.frame(stmb_plt1))))
 ####
-###########
+
+### plot fitted values for response
+#conditioned on random effects
+#### Try ggeffects and plot function??
+
+mydf<-ggpredict(stmb_plt1, terms = c("prop.c","trmnt"),type="fe")
+ggplot(mydf, aes(x, predicted,shape=group)) + geom_line()+facet_wrap(~group)
 
 
+
+
+##########
 ### alternative parameterization (see bolker glmm FAQ)
-stmb_plt2<-glmmTMB(seeds~trmnt*prop.c+ offset(log(fruit_count))+
+stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)+
+                   scale(temp.start)+ offset(log(fruit_count))+
                     (1|site/ID),family=nbinom2, data=plt) 
 
 summary(stmb_plt2)
@@ -158,6 +196,23 @@ r2.corr.mer(stmb_plt2)
 #alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
 1-var(residuals(stmb_plt2))/(var(model.response(model.frame(stmb_plt2))))
 ####
+<<<<<<< HEAD
 #
+=======
+## starting temp is most significant predictor
+# significantly colder days in rd 4 (and some in rd 3) impacted seed set
+
+##total polov glmmTMB
+potmb_plt<-glmmTMB(polov~trmnt*scale(prop.c) +scale(temp.start)+ 
+                     offset(log(fruit_count))+
+                     (1|site/ID),family=nbinom1, data=plt) 
+summary(potmb_plt)
+# same results with polov
+
+
+### Plotting output
+
+
+>>>>>>> b6e08b2e1c79a8c2b236d88c2e302f104386cbf5
 
 
