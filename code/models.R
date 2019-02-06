@@ -14,6 +14,9 @@
 #install.packages("pbkrtest")\
 #install.packages("Matrix")
 ####
+
+#Dan start here; run lines 20-67
+
 library(TMB)
 library(car)
 library(glmmTMB)
@@ -65,14 +68,26 @@ plt_nr<-plt %>%
 #   models #
 ###########
 
+
+# Dan run 75-85
+
 # total seed or pollinated ovules, number of fruit as offset
-#total seed model using glmmTMB (see Bolker GLMM FAQ for notes)
 stmb_plt1<-glmmTMB(seeds~trmnt*prop.c +
                   offset(log(fruit_count)) +
                     (1|site/ID),family=nbinom1, data=plt) 
 
 summary(stmb_plt1)
-fixef(stmb_plt1)
+
+#confidence intervals
+stmb_plt1_CI_prof <- confint(stmb_plt1)
+stmb_plt1_CI_quad <- confint(stmb_plt1,method="wald")
+stmb_plt1_CI_prof
+stmb_plt1_CI_quad
+
+#Dan after this point its mdoel assessment code
+
+
+# Test of significance of fixed effects using 
 #not sure whether type II or III anova is appropriate to test fixed effects
 # type III is the p value of the coefficient conditional on the other coefficients and the interaction!
 
@@ -95,12 +110,6 @@ QQline = qq.line(resid(stmb_plt1, type = "pearson"))
 ggplot(data = NULL, aes(sample = resid(stmb_plt1, type = "pearson"))) +
   stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
 
-#confidence intervals
-stmb_plt1_CI_prof <- confint(stmb_plt1)
-stmb_plt1_CI_quad <- confint(stmb_plt1,method="wald")
-stmb_plt1_CI_prof
-stmb_plt1_CI_quad
-
 ###r2 approximation from https://stats.stackexchange.com/questions/95054/how-to-get-an-overall-p-value-and-effect-size-for-a-categorical-factor-in-a-mi
 r2.corr.mer <- function(m) {
   lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
@@ -112,19 +121,7 @@ r2.corr.mer(stmb_plt1)
 #alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
 1-var(residuals(stmb_plt1))/(var(model.response(model.frame(stmb_plt1))))
 ####
-
-### parametric bootstrap CI from BBolker
-PBsimfun <- function(m0,m1,x=NULL) {
-  if (is.null(x)) x <- simulate(m0)
-  m0r <- try(refit(m0,x[[1]]),silent=TRUE)
-  if (inherits(m0r,"try-error")) return(NA)
-  m1r <- try(refit(m1,x[[1]]),silent=TRUE)
-  if (inherits(m1r,"try-error")) return(NA)
-  c(-2*(logLik(m0r)-logLik(m1r)))
-}
-
-
-#################
+###########
 
 
 ### alternative parameterization (see bolker glmm FAQ)
@@ -161,51 +158,6 @@ r2.corr.mer(stmb_plt2)
 #alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
 1-var(residuals(stmb_plt2))/(var(model.response(model.frame(stmb_plt2))))
 ####
-## starting temp is most significant predictor
-# significantly colder days in rd 4 (and some in rd 3) impacted seed set
-
-##total polov glmmTMB
-potmb_plt<-glmmTMB(polov~trmnt*scale(prop.c) +scale(temp.start)+ 
-                     offset(log(fruit_count))+
-                     (1|site/ID),family=nbinom1, data=plt) 
-summary(potmb_plt)
-# same results with polov
-
-
-### Plotting output
-
-
-###### Old plotting code; may not work with glmTMB
-### check for homogeneity, etc.
-op <- par(mfrow = c(2, 2), mar = c(5, 4, 1, 2))
-plot(stmb_plt1, add.smooth = FALSE, which = 1)
-par(mfrow=c(1,1))
-residuals <- resid(prmod)
-plot(residuals)
-plot(seed_land$flowers, residuals, xlab = "trtflw",
-     ylab = "Residuals")
-plot(seed_land$prop.c, residuals, xlab = "% Ag",
-     ylab = "Residuals")
-plot(seed_land$trmnt, residuals, xlab = "trmnt",
-     ylab = "Residuals")
-plot(seed_land$round, residuals, xlab = "round",
-     ylab = "Residuals")
-
-sjp.lmer(prmod,  type='re.qq')
-sjp.lmer(srmod,  type='re.qq')
-
-
-
-### other gosh dern plotting methods
-
-lattice::xyplot(seeds~trmnt| site, groups=site, data=plt, type=c('p','r'), auto.key=F)
-
-lattice::xyplot(seeds~trmnt| site, groups=site, data=plt_nr, type=c('p','r'), auto.key=F)
-
-lattice::xyplot((seeds/totov)~trmnt| site, groups=site, data=plt, type=c('p','r'), auto.key=F)
-
-lattice::xyplot((seeds/totov)~trmnt| site, groups=site, data=plt_nr, type=c('p','r'), auto.key=F)
-``
-
+#
 
 
