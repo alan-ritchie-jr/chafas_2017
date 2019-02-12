@@ -10,6 +10,7 @@ install.packages("car")
 install.packages("lme4")
 install.packages("Matrix")
 install.packages("snakecase")
+install.packages("DHARMa")
 ####
 
 #Dan start here; run lines 20-59
@@ -26,6 +27,7 @@ library(sjPlot)
 library(ggeffects)
 library(sjlabelled)
 library(snakecase)
+library(DHARMa)
 
 seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
@@ -66,18 +68,129 @@ plt_nr<-plt %>%
 
 # Dan run 69-96
 
+
+### with DHARMa 
+###count 0s--frequency dist
+###
 # total seed produced by treated fruit; number of fruit as offset
 seed_mod<-glmmTMB(seeds~trmnt*scale(prop.c) +
                   offset(log(frt)) +
-                    (1|site/ID),family=nbinom1, data=plt_nr) 
+                    (1|ID),family=nbinom1, data=plt_nr) 
 
 summary(seed_mod)
+
+#######################
+#Code 12Feb 2019###
+####
+# No interation; drop to look at fixed effects in isolation
+seed_mod2<-glmmTMB(seeds~trmnt+scale(prop.c) +
+            offset(log(frt)) +
+            (1|site/ID),family=nbinom1, data=plt_nr) 
+
+
+#gaussian mixed model, only site as RE
+seed_lmm<-lmer(avg_seed~trmnt*scale(prop.c)+
+                    (1|site), REML=FALSE,data=plt_nr) 
+
+summary(seed_lmm)
+
+
+###Mixed model, no int
+seed_lmm2<-lmer(avg_seed~trmnt+scale(prop.c)+
+                 (1|site), REML=FALSE,data=plt_nr) 
+
+summary(seed_lmm2)
+
+###just a linear model
+seed_lm<-lm(avg_seed~trmnt*scale(prop.c),data=plt_nr)
+summary(seed_lm)
+plot(seed_lm)
 
 #confidence intervals
 seed_mod_CI_prof <- confint(seed_mod)
 seed_mod_CI_quad <- confint(seed_mod,method="wald")
 seed_mod_CI_prof
 seed_mod_CI_quad
+
+###Use DHARMa to check residuals
+
+sim<-simulateResiduals(fittedModel = seed_mod, n = 250)# warning message because glmmTMB was used
+plot(sim) # no strange patterns in predicted vs residuals
+testDispersion(sim)
+#now for no interaction model
+sim2<-simulateResiduals(fittedModel = seed_mod2, n = 250)
+plot(sim2)
+
+
+#gaussian mixed model
+sim_lmm<-simulateResiduals(fittedModel = seed_lmm, n = 250)
+plot(sim_lmm)
+testUniformity(sim_lmm)
+testDispersion(sim_lmm)
+#lm with averaged seeds per plant
+sim_lm<-simulateResiduals(fittedModel = seed_lm, n = 250)# warning message because glmmTMB was used
+plot(sim_lm)
+testDispersion(sim_lm) 
+testUniformity(sim_lm)
+#pollinated ovules model
+
+sim_pol<-simulateResiduals(fittedModel = polov_mod, n = 250)
+plot(sim_pol)
+
+#As a check because glmmTMB can't separate out random effect from predicted effects
+# recalculate predictions by hand - see help ?predict.glmmTMB
+# create new data from plt_nr
+new_plt<-plt_nr
+# set ID and site to NA in new DF
+new_plt$ID=NA
+new_plt$site=NA
+#calculate new predicted values that average over the REs  
+pred = predict(seed_mod, newdata = new_plt)
+#
+plotResiduals(pred, sim$scaledResiduals) #doesn't differ from direct approach
+#plot against other predictors
+par(mfrow=c(1,2))
+plotResiduals(plt_nr$prop.c, sim$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim$scaledResiduals)
+#heteroscedascticity doesn't look excessive
+
+#for no interaction model
+plotResiduals(plt_nr$prop.c, sim2$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim2$scaledResiduals)
+#same here
+par(mfrow=c(1,2))
+plotResiduals(plt_nr$prop.c, sim_lmm$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim_lmm$scaledResiduals)
+testDispersion(sim_lmm) 
+par(mfrow=c(1,1))
+### some other plots
+
+par(mfrow=c(1,2))
+plotResiduals(plt_nr$prop.c, sim_lm$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim_lm$scaledResiduals)
+
+testDispersion(sim) #test for overdispersion; our model accounts for this somewhat
+#its worth nothing that while we get a significant value, the parameter is very small
+
+
+#histogram to check for zero values in response
+ggplot(plt_nr, aes(x=seeds)) + 
+  geom_histogram(fill="grey", color="black")+ylab("Count")+xlab("Seeds Produced by Treated Fruit")
++facet_grid(.~trmnt)
+#for pollinated ovules
+ggplot(plt_nr, aes(x=polov)) + 
+  geom_histogram(fill="grey", color="black")+
+  ylab("Count")+xlab("Pollinated Ovules Produced by Treated Fruit")+facet_grid(.~trmnt)
+
+ggplot(plt_nr, aes(x=avg_seed)) + 
+  geom_histogram(fill="grey", color="black")+ylab("Count")+xlab("Avg Seed per Treated Fruit")+
+  facet_grid(.~trmnt)
+
+### not many zeroes!
+
+
+
+###################################
 
 #total pollinated ovules produced by treated fruit; number of fruit as offset
 polov_mod<-glmmTMB(polov~trmnt*scale(prop.c) +
@@ -118,13 +231,13 @@ shp<-s%>%filter(group=="hp")
 sop<-s%>%filter(group=="op")
 
 ###make plot for seed model
-ggplot(data=plt_nr,aes(prop.c, seeds))+
+ggplot(data=plt_nr,aes(prop.c, (seeds/frt)))+
   geom_point(aes(shape=trmnt),position="jitter")+
   geom_line(data=s, aes(x, predicted,linetype=group))+
   geom_ribbon(data=shp,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   geom_ribbon(data=sop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   labs(shape="Treatment",linetype="Predicted Response")+
-  xlab("% Agriculture")+ylab("Seeds Produced")+
+  xlab("% Agriculture")+ylab("Seeds per Fruit")+
   ggtitle("Effect of % Agriculture on Seed Production",
           subtitle="Predicted Response vs. Data")
 
@@ -157,6 +270,29 @@ ggplot(data=plt_nr,aes(prop.c, polov))+
   labs(shape="Treatment",linetype="Predicted Response")+
   xlab("% Agriculture")+ylab("Total Pollinated Ovules")+
   ggtitle("Effect of % Agriculture on Pollination",
+          subtitle="Predicted Response vs. Data")
+
+
+
+s<-get_model_data(seed_mod,type="pred",terms=c("prop.c","trmnt"), 
+                  pred.type="re", colors= "bw",ci.lvl= .95) 
+
+#re=random effect conditioned 
+
+
+### make separate dataframes for CI for plot
+shp<-s%>%filter(group=="hp")
+sop<-s%>%filter(group=="op")
+
+###make plot for seed model
+ggplot(data=plt_nr,aes(prop.c, (seeds/frt)))+
+  geom_point(aes(shape=trmnt),position="jitter")+
+  geom_line(data=s, aes(x, predicted,linetype=group))+
+  geom_ribbon(data=shp,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+  geom_ribbon(data=sop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
+  labs(shape="Treatment",linetype="Predicted Response")+
+  xlab("% Agriculture")+ylab("Seeds per Fruit")+
+  ggtitle("Effect of % Agriculture on Seed Production",
           subtitle="Predicted Response vs. Data")
 
 
