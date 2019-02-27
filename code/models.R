@@ -64,7 +64,12 @@ plt_nr<-plt %>%
 ############
 #   models #
 ###########
+## which distributions are appropriate for the data?
+qqp(plt_nr$avg_seed, "norm")# avg seed per fruit looks pretty good
 
+nbinom <- fitdistr(plt_nr$seeds, "Negative Binomial")
+qqp(plt_nr$seeds, "nbinom", size = nbinom$estimate[[1]], mu = nbinom$estimate[[2]])
+#count data also look good for nb distribution
 
 # Dan run 69-96
 
@@ -75,7 +80,7 @@ plt_nr<-plt %>%
 # total seed produced by treated fruit; number of fruit as offset
 seed_mod<-glmmTMB(seeds~trmnt*scale(prop.c) +
                   offset(log(frt)) +
-                    (1|ID),family=nbinom1, data=plt_nr) 
+                    (1|site),family=nbinom1, data=plt_nr) 
 
 summary(seed_mod)
 
@@ -85,9 +90,9 @@ summary(seed_mod)
 # No interation; drop to look at fixed effects in isolation
 seed_mod2<-glmmTMB(seeds~trmnt+scale(prop.c) +
             offset(log(frt)) +
-            (1|site/ID),family=nbinom1, data=plt_nr) 
+            (1|site),family=nbinom1, data=plt_nr) 
 
-
+summary(seed_mod2)
 #gaussian mixed model, only site as RE
 seed_lmm<-lmer(avg_seed~trmnt*scale(prop.c)+
                     (1|site), REML=FALSE,data=plt_nr) 
@@ -117,11 +122,13 @@ seed_mod_CI_quad
 sim<-simulateResiduals(fittedModel = seed_mod, n = 250)# warning message because glmmTMB was used
 plot(sim) # no strange patterns in predicted vs residuals
 testDispersion(sim)
+testUniformity(sim)
 #now for no interaction model
 sim2<-simulateResiduals(fittedModel = seed_mod2, n = 250)
 plot(sim2)
-
-
+testDispersion(sim2)#both this and interaction model have similar results, 
+#including the ID RE seems to effect dispersion test
+testUniformity(sim2)
 #gaussian mixed model
 sim_lmm<-simulateResiduals(fittedModel = seed_lmm, n = 250)
 plot(sim_lmm)
@@ -155,9 +162,13 @@ plotResiduals(plt_nr$trmnt, sim$scaledResiduals)
 #heteroscedascticity doesn't look excessive
 
 #for no interaction model
+pred2 = predict(seed_mod2, newdata = new_plt)
+plotResiduals(pred2, sim$scaledResiduals) 
 plotResiduals(plt_nr$prop.c, sim2$scaledResiduals)
 plotResiduals(plt_nr$trmnt, sim2$scaledResiduals)
 #same here
+
+#for lmm
 par(mfrow=c(1,2))
 plotResiduals(plt_nr$prop.c, sim_lmm$scaledResiduals)
 plotResiduals(plt_nr$trmnt, sim_lmm$scaledResiduals)
