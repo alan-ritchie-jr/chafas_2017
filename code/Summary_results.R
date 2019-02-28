@@ -71,8 +71,8 @@ mean_frt_rem<-seed_land%>%
 seed_land%>%group_by(trmnt, ID)%>%
   summarize(sum_seed=sum(total.seeds))%>%
   ggplot(aes(trmnt ,sum_seed ))+geom_boxplot()+ theme_bw()+
-  labs(x="Treatment" ,y="Total Seeds Produced")+
-  ggtitle("Fig. 2: Total Seed per Plant by Treatment")
+  labs(x="Treatment" ,y="Seeds Produced")+
+  ggtitle("Fig. 2: Seeds Produced per Plant by Treatment")
 ####
 
 ### Supplemental plots####
