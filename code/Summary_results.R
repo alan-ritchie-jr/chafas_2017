@@ -1,10 +1,16 @@
 ### Jan 2019 code
+
+##Dan run lines 3-10, then go to 73
+
 #### data for summary tables and results section
 library(tidyverse)
 pollination<-read.csv("data/pollination_2017_pp_plant_trait.csv")
 #upload seed data merged with the environmental data
 seed_land<-read.csv("data/seed_land.csv")
 seed_land<-seed_land%>%filter(plot=="hi")
+####
+
+# Sum general summary information for the results section
 
 # # of distinct plants used
 pollination<-pollination%>%filter(plot=="hi")
@@ -16,16 +22,16 @@ pollination%>% group_by(trmnt)%>% summarize(n_plants=n_distinct(ID)) # of times 
 n_distinct(seed_land$ID)
 
 # seed and fruit data summary
+
+
+### table of fruit and seed production by treatment
 seed_tbl<-seed_land%>%
   filter(plot=="hi")%>% # select only the hi density plots
   group_by(trmnt)%>%
   summarise(n_plants=n_distinct(ID),n_fruit=n(),avg_seed=mean(total.seeds),median=median(total.seeds), 
                     sd=sd(total.seeds), var=var(total.seeds))
-seed_tbl
-mean(seed_tbl$n_fruit)
-nrow(seed_land)
 
-
+# Table of total fruit and seeds produced per plant
 tot_seed_tbl<-seed_land%>%
   filter(plot=="hi")%>%
   group_by(trmnt,ID)%>%
@@ -61,9 +67,11 @@ mean_frt_rem<-seed_land%>%
   group_by(trmnt)%>%
   summarize(mean_frt_rem=mean(tot_frt_rem), med_frt_rem=median(tot_frt_rem))
 
+
+
+
+#Dan start here!
 ### PLOTS####
-
-
 
 # fig 2. Boxplots of two treatments
 
@@ -136,6 +144,22 @@ theme_bw()+
   ggtitle("Fig. S3b: Flowers Treated by Treatment per Round")
   
  ### didn't really change
+
+
+#### These are important figures!!!
+### Seeds 
+ggplot(data=plt, aes(prop.c,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+### poll ovules
+ggplot(data=plt_nr, aes(prop.c,polov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+### seed  over time
+ggplot(data=plt,aes(temp.start,seeds, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+ggplot(data=plt,aes(trmnt,seeds, color=trmnt))+geom_boxplot()+
+  facet_grid(.~round)
+
   
   ##############
 ###############################
