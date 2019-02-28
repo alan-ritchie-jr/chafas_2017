@@ -8,26 +8,25 @@ hand_poll(c(5,4,3,2,1))#test
 #or simulate data
 # A different data set
 df1 <- data.frame(
-  treatment= factor(c("HP","HP","HP","HP","HP", "OP", "OP","OP","OP","OP")),
+  treatment= factor(c("SP","SP","SP","SP","SP", "OP", "OP","OP","OP","OP")),
   landscape = c(.1,.2,.3,.4,.5,.1,.2,.3,.4,.5),
   seedset = c(5,5,5,5,5, 5,4,3,2,1))
 df1
 
 
 #create legend
-test.labels<-c("Hand Pollinated","Open Pollinated")
+test.labels<-c("Supplemental Pollinated","Open Pollinated")
 #create plot
 #f <- ggplot(data.frame(x = c(0,0.2,0.4,0.6,0.8,1.0), y=c(0,1,2,3,4,5)), aes(x))
 f<- ggplot(data=df1, aes(landscape, seedset, group=treatment, shape=treatment))
 #f + stat_function(fun = HP.density, size=2) +stat_function(fun=OP.density, size=1.5, linetype=2)+ 
 f+ geom_line(aes(linetype=treatment), size=1.5)+
-  xlab("% Agriculture")+
+  xlab("% Agriculture Surrounding Restoration")+
   ylab("Seed Set") + xlim(0.1,.6) + ylim(0.5,7)+
   theme_bw() + 
   #Change legend title
-  scale_linetype_discrete(name  ="Treatment",
-                          breaks=c("OP","HP"),
-                          labels=c("OP", "HP"))+
+  scale_linetype_discrete(name  ="Treatment")#
+                         
   #set axis limits 
   
   #Change legend size
