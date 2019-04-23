@@ -1,15 +1,27 @@
-### Jan 2019 code
+### April 2019: check out what fruit level responses and ovules n shit.
 
+library(lme4)
+library(nlme)
+library(glmmTMB)
+library(MASS)
 ##Dan run lines 3-10, then go to 73
-
+library(car)
 #### data for summary tables and results section
 library(tidyverse)
 pollination<-read.csv("data/pollination_2017_pp_plant_trait.csv")
 #upload seed data merged with the environmental data
 seed_land<-read.csv("data/seed_land.csv")
 seed_land<-seed_land%>%filter(plot=="hi")
-####
 
+
+
+
+
+
+
+####
+mean(sites$prop.c)
+sd(sites$prop.c)
 # Sum general summary information for the results section
 
 # # of distinct plants used
@@ -28,35 +40,182 @@ n_distinct(seed_land$ID)
 seed_tbl<-seed_land%>%
   filter(plot=="hi")%>% # select only the hi density plots
   group_by(trmnt)%>%
-  summarise(n_plants=n_distinct(ID),n_fruit=n(),avg_seed=mean(total.seeds),median=median(total.seeds), 
-                    sd=sd(total.seeds), var=var(total.seeds))
+  summarise(n_plants=n_distinct(ID),n_fruit=n(),mean_fruit=mean(n_fruit),
+            mean_seed=mean(total.seeds), mean_pollovs=mean(poll_ovules), mean_ovules=mean(total.ovules),
+            median=median(total.seeds), mean_seed_per_ovule=mean_seed/mean_ovules, mean_polovs_per_ovule=mean_pollovs/mean_ovules,
+                    sd=sd(total.seeds),var_seeds=var(total.seeds),
+sd_fruit=sd(n_fruit))
 
 # Table of total fruit and seeds produced per plant
 tot_seed_tbl<-seed_land%>%
   filter(plot=="hi")%>%
   group_by(trmnt,ID)%>%
-  summarise(sum_seeds=sum(total.seeds), n_fruit=n())%>%
+  summarise(sum_seeds=sum(total.seeds), n_fruit=n(), seeds_fruit=sum_seeds/n_fruit)%>%
   group_by(trmnt)%>%
-  summarise(n_plants=n(),total_fruit=sum(n_fruit),
-            avg_n_fruit=mean(n_fruit), total_seeds=sum(sum_seeds),
+  summarise(n_plants=n(),total_fruit=sum(n_fruit),sd_fruit=sd(n_fruit),
+            mean_fruit=mean(n_fruit), total_seeds=sum(sum_seeds),
             avg_sum_seeds=mean(sum_seeds), med_sum_seeds=median(sum_seeds),
-            seeds_fruit=total_seeds/total_fruit,
-            avg_seeds_fruit=avg_sum_seeds/avg_n_fruit)
+            avg_seeds_fruit=avg_sum_seeds/avg_n_fruit,sd_seed_fruits=sd(seeds_fruit))
+
+  indi_seed_tbl<-seed_land%>%
+  filter(plot=="hi")%>%mutate(seeds_per_ovule_frt=total.seeds/total.ovules)%>%
+  group_by(trmnt,ID,site)%>%
+  summarise(sum_seeds=sum(total.seeds), sum_ovules=sum(total.ovules),n_fruit=n(), 
+            seeds_fruit=sum_seeds/n_fruit,
+            ovules_fruit=sum_ovules/n_fruit,seeds_per_ovule=sum_seeds/sum_ovules,
+            mean_seeds_per_ovule=mean(seeds_per_ovule_frt))
+            
+
+indi_seed_tbl%>%ggplot(aes(trmnt,sum_seeds/sum_ovules,fill=trmnt))+geom_boxplot()
+indi_seed_tbl%>%ggplot(aes(trmnt,mean_seeds_per_ovule,fill=trmnt))+geom_boxplot()
+## 95CIs for mean # fruit per treatment
+# sp 
+u_sp <- 5.17
+ sd_s <- 3.67
+ n_s<- 62
+ error_s <- qnorm(0.975)*sd_s/sqrt(n_s)
+ left <- u_sp-error_s
+ right <- u_sp+error_s
+ left
+error_s
+ right
+#OP
+ u_op <- 4.25
+ sd <- 2.81
+ n <- 51
+ error <- qnorm(0.975)*sd/sqrt(n)
+ left <- u_op-error
+ right <- u_op+error
+ left
+ error
+ right
+################################################################ 
+#error for mean seeds/fruit 
+ 
+ 
+ u_sp <- 8.59
+ sd_s <- 2.17
+ n_s<- 62
+ error_s <- qnorm(0.975)*sd_s/sqrt(n_s)
+ left <- u_sp-error_s
+ right <- u_sp+error_s
+ left
+ error_s
+ right
+ #OP
+ u_op <- 8.85
+ sd <- 2.65
+ n <- 51
+ error <- qnorm(0.975)*sd/sqrt(n)
+ left <- u_op-error
+ right <- u_op+error
+ left
+ error
+ right 
+ 
+ ######
+#post- hoc test
+ #did the number of fruit differ between treatments?
+##glm anova with nb error distribution of n_fruit~trmnt (per plant basis)
+ 
+trmnt_mod<-glm.nb(n_fruit~trmnt,data=indi_seed_tbl)
+summary(trmnt_mod)
+qqnorm(residuals(trmnt_mod))
+plot(trmnt_mod)
+
+#likelihood ratio test 
+trmnt_mod_drop<-glm.nb(n_fruit~1,data=indi_seed_tbl)
+
+anova(trmnt_mod,trmnt_mod_drop)
+anova(trmnt_mod_drop,trmnt_mod)
+
+#tukey
+library(multcomp)
+summary(glht(trmnt_mod, linfct = mcp(trmnt = "Tukey")), test = adjusted("holm"))
+#
+qqnorm(residuals(trmnt_mod))
+plot(trmnt_mod)
 
 
+###Post-hoc 2
+# did the number of seeds/ fruit differ between treatments?
+## seeds/fruit
+
+##lm
+trmnt_mod2_lm<-lm(seeds_fruit~trmnt,data=indi_seed_tbl)
+summary(trmnt_mod2_lm)
+
+#some diagnostic plots
+qqnorm(residuals(trmnt_mod2_lm))
+plot(trmnt_mod2_lm)
+qqPlot(trmnt_mod2_lm$residuals)
+qqPlot(residuals(trmnt_mod2_lm))
+### fits assumptions
+trmnt_mod2_drop<-lm(seeds_fruit~1,data=indi_seed_tbl)
+#post-hoc anova on model
+anova(trmnt_mod2_lm,trmnt_mod2_drop)
+# but seeds/fruit were the same.
+
+#tukey
+summary(glht(trmnt_mod2_lm, linfct = mcp(trmnt = "Tukey")), test = adjusted("holm"))
+
+#these agree
+
+### posthoc 3
+
+### did the number of seeds/ovules look the same between treatments?
+
+
+s_o_trmnt_mod<-glm(sum_seeds/sum_ovules~trmnt,family=binomial,weights=sum_ovules,
+                   data=indi_seed_tbl)
+
+summary(s_o_trmnt_mod)
+
+s_o_trmnt_q<-glm(sum_seeds/sum_ovules~trmnt,family=quasibinomial,weights=sum_ovules,
+                   data=indi_seed_tbl)
+
+summary(s_o_trmnt_q)
+
+#test glmm
+s_o_trmnt_glmm<-glmer(sum_seeds/sum_ovules~trmnt+(1|ID),family=binomial,weights=sum_ovules,
+                     data=indi_seed_tbl)
+summary(s_o_trmnt_glmm)
+
+s_o_sim<-simulateResiduals(fittedModel = s_o_trmnt_mod, n = 250)
+plot(s_o_sim) # no strange patterns in predicted vs residuals
+testDispersion(s_o_sim)
+testUniformity(s_o_sim)
+testZeroInflation(s_o_sim)
+
+s_o_simq<-simulateResiduals(fittedModel = s_o_trmnt_q, n = 250)
+plot(s_o_sim) # no strange patterns in predicted vs residuals
+testDispersion(s_o_simq)
+testUniformity(s_o_simq)
+testZeroInflation(s_o_simq)
+
+s_o_glmm_sim<-simulateResiduals(fittedModel = s_o_trmnt_glmm, n = 250)# warning message because glmmTMB was used
+plot(s_o_glmm_sim) # no strange patterns in predicted vs residuals
+testDispersion(s_o_glmm_sim)
+testUniformity(s_o_glmm_sim)
+testZeroInflation(s_o_glmm_sim)
+
+
+
+#########################################
 # table of flowers treated, fruit recovered, and %fruit loss
 flower_tbl<-seed_land%>%
   filter(plot=="hi")%>%
   group_by(trmnt,ID,round)%>%
-  summarize(n_fruit=n(), n_flowers=(sum(flowers)/n()))%>%
-  group_by(trmnt)%>%
+  summarize(n_fruit=n(), n_flowers=(sum(flowers)/n()),mean_flowers=n_flowers/4,
+            fruit_per_flower=n_fruit/n_flowers)%>%
+  group_by(trmnt,ID)%>%
     summarise(n_fruit_collected=sum(n_fruit),n_flowers_treated=sum(n_flowers),
               avg_fruit_coll=mean(n_fruit),avg_flowers_treated=mean(n_flowers),
               medfruit_coll=median(n_fruit),med_flowers_treated=median(n_flowers),
               frt_loss=1-(n_fruit_collected/n_flowers_treated))
-ggplot(flower_tbl, aes(trmnt ,frt_loss, color=trmnt)) +geom_jitter()+ 
-  labs(x="Treatment" ,y="Fruit Loss")+
-  ggtitle("Average Fruit Loss by Treatment")
+ggplot(flower_tbl, aes(trmnt ,fruit_per_flower,fill=trmnt)) +geom_boxplot()+ 
+  labs(x="Treatment" ,y="Fruit per flower treated")+
+  ggtitle("Fruit per treated flower between treatments")
 
 ## table for untreated frt removal
 mean_frt_rem<-seed_land%>%

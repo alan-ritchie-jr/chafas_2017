@@ -11,6 +11,7 @@ install.packages("lme4")
 install.packages("Matrix")
 install.packages("snakecase")
 install.packages("DHARMa")
+
 ####
 
 #Dan start here; run lines 20-59
@@ -36,9 +37,9 @@ seed_land$round<-as.factor(seed_land$round)
 
 
 # summary table
-plt<- seed_land %>%
-  group_by(site,prop.c,trmnt, round, ID,flowers, fecund,yday,temp.start)%>%
-  summarise(fruit_count=n(), trtflw=sum(unique(flowers)),
+plt_nr<- seed_land %>%
+  group_by(site,prop.c,trmnt, ID)%>%
+  summarise(frt=n(), trtflw=sum(unique(flowers)),
             polov=sum(poll_ovules),
             avg_polov=mean(poll_ovules),
             seeds=sum(total.seeds),
@@ -47,18 +48,7 @@ plt<- seed_land %>%
             avg_totov=mean(total.ovules))
 
 
-plt_nr<-plt %>%
-  group_by(prop.c,site,trmnt,ID)%>% 
-  summarise(frt=sum(fruit_count),avg_frt=mean(fruit_count),
-            fecund=sum(fecund),avg_fecund=mean(fecund),
-            trtflw=sum(trtflw),
-            avg_trtflw=mean(trtflw),
-            seeds=sum(seeds),
-            avg_seed=mean(avg_seed), 
-            polov=sum(polov),
-            avg_polov=mean(avg_polov),
-            totov=sum(totov),
-            avg_totov=mean(avg_totov))  
+
 
 
 ############
@@ -75,8 +65,10 @@ qqp(plt_nr$seeds, "nbinom", size = nbinom$estimate[[1]], mu = nbinom$estimate[[2
 
 
 ### with DHARMa 
-###count 0s--frequency dist
+
 ###
+
+##nb models
 # total seed produced by treated fruit; number of fruit as offset
 seed_mod<-glmmTMB(seeds~trmnt*scale(prop.c) +
                   offset(log(frt)) +
@@ -84,42 +76,159 @@ seed_mod<-glmmTMB(seeds~trmnt*scale(prop.c) +
 
 summary(seed_mod)
 
+seed_mod2<-glmmTMB(seeds~trmnt*scale(prop.c) +
+                     offset(log(frt)) +
+                     (1|site),family=nbinom2, data=plt_nr) 
+
+summary(seed_mod2)
+
+
+
+###normal models
+seed_mod3<-lmer(avg_seed~trmnt+scale(prop.c)+(1|site),data=plt_nr)
+summary(seed_mod3)
+plot(seed_mod3)
+
+qqnorm(resid(seed_mod3))
+qqline(resid(seed_mod3))
+
+seed_mod3p<-lme(avg_seed~trmnt*scale(prop.c),data=plt_nr,random=~1|site)
+summary(seed_mod3p)
+
+#if you drop scaling you get very high negative correlation between intercept and prop.c
+
+seed_mod3TMB<-glmmTMB(avg_seed~trmnt*prop.c+(1|site),data=plt_nr)
+summary(seed_mod3TMB)
+
+  
+  
+seed_mod4<-lmer(avg_seed~trmnt+prop.c+(1|site),data=plt_nr)          
+summary(seed_mod4)
+qqnorm(resid(seed_mod4))
+
+
+###using glmer.nb
+
+####glmer.nb
+seed_mod_glmer<-glmer.nb(seeds~trmnt*scale(prop.c) +
+                           offset(log(frt)) +
+                           (1|site), data=plt_nr)
+
+summary(seed_mod_glmer)
+isSingular(seed_mod_glmer)
+
+# these give identical results
+
+
+seed_mod_glmer2<-glmer.nb(seeds~trmnt+scale(prop.c) +
+                            offset(log(frt)) +
+                            (1|site), data=plt_nr)
+
+summary(seed_mod_glmer2)
+isSingular(seed_mod_glmer2)#nto coming up similar, parameters are similar
+
+
+
+#CIs
+seed_mod_CI<- confint(seed_mod_glmer,method="profile")
+seed_mod_CI_Wald <- confint(seed_mod,method="wald")
+seed_mod_CI_root<- confint(seed_mod2,method="uniroot")
+seed_mod_CI_root
+seed_mod_CI_Wald
+
+
+
+
+####
+#the model specification is getting confusing.
+####
+
+
+
+sim<-simulateResiduals(fittedModel = seed_mod3, n = 250)# warning message because glmmTMB was used
+plot(sim) # no strange patterns in predicted vs residuals
+testDispersion(sim)
+testUniformity(sim)
+#now for no interaction model
+sim2<-simulateResiduals(fittedModel = seed_mod4, n = 250)
+plot(sim2)
+testDispersion(sim2)#both this and interaction model have similar results, 
+#including the ID RE seems to effect dispersion test
+testUniformity(sim2)
+
+
+#gaussian mixed model
+sim_lmm<-simulateResiduals(fittedModel = seed_lmm, n = 250)
+plot(sim_lmm)
+testUniformity(sim_lmm)
+testDispersion(sim_lmm)
+#lm with averaged seeds per plant
+sim_lm<-simulateResiduals(fittedModel = seed_lm, n = 250)# warning message because glmmTMB was used
+plot(sim_lm)
+testDispersion(sim_lm) 
+testUniformity(sim_lm)
+
+
+
+####glmer.nb
+seed_mod_glmer<-glmer.nb(seeds~trmnt*scale(prop.c) +
+                           offset(log(frt)) +
+                           (1|site), data=plt_nr)
+
+summary(seed_mod_glmer)
+isSingular(seed_mod_glmer)
+
+# these give identical results
+
+seed_mod_glmer_uns<-glmer.nb(seeds~trmnt*prop.c +
+                           offset(log(frt)) +
+                           (1|site), data=plt_nr)
+
+
+seed_mod_glmer2<-glmer.nb(seeds~trmnt+scale(prop.c) +
+                           offset(log(frt)) +
+                           (1|site), data=plt_nr)
+
+summary(seed_mod_glmer2)
+isSingular(seed_mod_glmer2)
+
 #######################
 #Code 12Feb 2019###
 ####
 # No interation; drop to look at fixed effects in isolation
-seed_mod2<-glmmTMB(seeds~trmnt+scale(prop.c) +
-            offset(log(frt)) +
-            (1|site),family=nbinom1, data=plt_nr) 
 
-summary(seed_mod2)
 #gaussian mixed model, only site as RE
 seed_lmm<-lmer(avg_seed~trmnt*scale(prop.c)+
-                    (1|site), REML=FALSE,data=plt_nr) 
-
+                    (1|site), data=plt_nr) 
+seed_lmm<-lme(avg_seed~trmnt*prop.c,data=plt_nr,random=~1|site)
 summary(seed_lmm)
 
-
-###Mixed model, no int
-seed_lmm2<-lmer(avg_seed~trmnt+scale(prop.c)+
-                 (1|site), REML=FALSE,data=plt_nr) 
-
-summary(seed_lmm2)
-
-###just a linear model
-seed_lm<-lm(avg_seed~trmnt*scale(prop.c),data=plt_nr)
-summary(seed_lm)
-plot(seed_lm)
-
 #confidence intervals
-seed_mod_CI_prof <- confint(seed_mod)
-seed_mod_CI_quad <- confint(seed_mod,method="wald")
-seed_mod_CI_prof
-seed_mod_CI_quad
+
+seed_mod_CI<- confint(seed_mod,method="profile")
+seed_mod_CI_Wald <- confint(seed_mod2,method="wald")
+seed_mod_CI_root<- confint(seed_mod2,method="uniroot")
+seed_mod_CI_root
+seed_mod_CI_Wald
+
+seed_mod2_CI<- confint(seed_mod_glmer,method="profile")
+seed_mod2_CI
+seed_mod2_CI_Wald <- confint(seed_mod_glmer,method="Wald")
+seed_mod2_CI_Wald
+seed_mod2_CI_boot<- confint(seed_mod2,method="boot")
+#
+seed_mod_CI<- confint(seed_mod_glmer,method="profile")
+seed_mod_CI_Wald <- confint(seed_mod_glmer,method="wald")
+seed_mod_CI_boot<- confint(seed_mod_glmer,method="boot")
+seed_mod_CI_Wald
+seed_mod_CI_boot
+
+
+
 
 ###Use DHARMa to check residuals
 
-sim<-simulateResiduals(fittedModel = seed_mod, n = 250)# warning message because glmmTMB was used
+sim<-simulateResiduals(fittedModel = seed_mod_glmer, n = 250)# warning message because glmmTMB was used
 plot(sim) # no strange patterns in predicted vs residuals
 testDispersion(sim)
 testUniformity(sim)
@@ -231,20 +340,25 @@ polov_mod_CI_quad
 ### get_model_data + ggplot version
 theme_set(theme_bw())
 #run get_model_data to extract ggplot usable output
-s<-get_model_data(seed_mod,type="pred",terms=c("prop.c","trmnt"), 
-                  pred.type="re", colors= "bw",ci.lvl= .95) 
+s<-get_model_data(seed_mod,ci.lvl= .95, type="pred",terms=c("prop.c","trmnt"), 
+                  pred.type="re", colors= "bw") 
 
-#re=random effect conditioned 
-
-
+scaled_values<-scale(plt_nr$prop.c)
+attributes(scaled_values)
 ### make separate dataframes for CI for plot
 shp<-s%>%filter(group=="hp")
 sop<-s%>%filter(group=="op")
+s2hp<-s2%>%filter(group=="hp")
+s2op<-s2%>%filter(group=="op")
+s$predicted
+
+effect_plot
 
 ###make plot for seed model
-ggplot(data=plt_nr,aes(prop.c, (seeds/frt)))+
-  geom_point(aes(shape=trmnt),position="jitter")+
-  geom_line(data=s, aes(x, predicted,linetype=group))+
+ggplot(data=s, aes(x, predicted),linetype=group)+
+  geom_line(aes(linetype=group))+
+  geom_point(data=plt_nr,aes(prop.c, (seeds/frt),shape=trmnt),position="jitter",
+             inherit.aes = FALSE)+
   geom_ribbon(data=shp,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   geom_ribbon(data=sop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   labs(shape="Treatment",linetype="Predicted Response")+
