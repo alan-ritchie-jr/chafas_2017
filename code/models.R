@@ -69,20 +69,66 @@ qqp(plt_nr$seeds, "nbinom", size = nbinom$estimate[[1]], mu = nbinom$estimate[[2
 ###
 
 ##nb models
+
 # total seed produced by treated fruit; number of fruit as offset
-seed_mod<-glmmTMB(seeds~trmnt*scale(prop.c) +
+
+#variance scales linearly
+seed_mod<-glmmTMB(seeds~trmnt*prop.c +
                   offset(log(frt)) +
                     (1|site),family=nbinom1, data=plt_nr) 
 
 summary(seed_mod)
 
-seed_mod2<-glmmTMB(seeds~trmnt*scale(prop.c) +
+
+exp(2.2044025)#hp plants have mean of 9 seeds @ intercept
+exp(2.2044025+0.1968647)#op plants have mean of 11 @ intercept
+
+#effect of 1 unit change of slope on hp
+exp(-0.0008916) #0.9991 x seed
+#effect of 50 unit change
+exp(2.2044025-0.0008916*50)# a 50 unit change would lead to a 0.4 seed drop 
+
+# if a plant has 10 seeds per fruit, and 100 fruits in its lifetime, you'd have 1000 seeds
+# so a 0.4 drop in average seed/fruit= 
+9.5*100
+#only a loss of 50 fruit
+950/1000 #or a 5% loss in seed set; not a very large effect
+
+#versus 1.6 seeds per fruit
+
+8.4*100
+840/1000 #16% loss in seed set; larger, but maybe not signicant
+
+
+
+exp(2.2044025+0.1968647) #11 seeds @ 20% ag
+exp(2.2044025+0.1968647) -exp((2.2044025+0.1968647)+((-0.0005999-0.0026218)*50)) 
+#a 50 unit change would lead to  1.64 seeds per fruit lost in op treatment
+
+
+
+
+## variance is scales quadratically with mean
+seed_mod2<-glmmTMB(seeds~trmnt*prop.c +
                      offset(log(frt)) +
                      (1|site),family=nbinom2, data=plt_nr) 
 
 summary(seed_mod2)
 
+exp(2.1825379)# hp plants have mean 8.868 seeds/fruit @ intercept
+exp(2.1825379+0.1873513) #op plants have mean 1.69 seeds/fruit @intercept
 
+#effect of 1 unit change of slope on hp
+exp(-0.0005999) #0.99940 x seed
+#effect of 50 unit change
+exp(2.1825379)-exp(2.1825379-(0.0005999*50))# a 50 unit change would lead to a .26 seed drop
+#effect of 1 unit change of slope on op
+
+exp((2.1825379+0.1873513)) #10.7 seeds @ 20% ag
+exp((2.1825379+0.1873513))-exp((2.1825379+0.1873513)+((-0.0005999-0.0026218)*50)) 
+#a 50 unit change would lead to  1.6 seeds lost in op treatment
+
+### similar story, about 3% vs 16% loss in seed if this relationship is true.
 
 ###normal models
 seed_mod3<-lmer(avg_seed~trmnt+scale(prop.c)+(1|site),data=plt_nr)
@@ -117,6 +163,7 @@ seed_mod_glmer<-glmer.nb(seeds~trmnt*scale(prop.c) +
 summary(seed_mod_glmer)
 isSingular(seed_mod_glmer)
 
+
 # these give identical results
 
 
@@ -145,16 +192,18 @@ seed_mod_CI_Wald
 
 
 
-sim<-simulateResiduals(fittedModel = seed_mod3, n = 250)# warning message because glmmTMB was used
-plot(sim) # no strange patterns in predicted vs residuals
-testDispersion(sim)
-testUniformity(sim)
-#now for no interaction model
-sim2<-simulateResiduals(fittedModel = seed_mod4, n = 250)
-plot(sim2)
-testDispersion(sim2)#both this and interaction model have similar results, 
-#including the ID RE seems to effect dispersion test
+sim2<-simulateResiduals(fittedModel = seed_mod2, n = 250)# warning message because glmmTMB was used
+plot(sim2) # no strange patterns in predicted vs residuals
+testDispersion(sim2)
 testUniformity(sim2)
+testZeroInflation(sim2)
+#now for no interaction model
+sim<-simulateResiduals(fittedModel = seed_mod, n = 250)
+plot(sim)
+testDispersion(sim)#both this and interaction model have similar results, 
+#including the ID RE seems to effect dispersion test
+testUniformity(sim)
+testZeroInflation(sim)
 
 
 #gaussian mixed model
@@ -185,12 +234,15 @@ seed_mod_glmer_uns<-glmer.nb(seeds~trmnt*prop.c +
                            (1|site), data=plt_nr)
 
 
-seed_mod_glmer2<-glmer.nb(seeds~trmnt+scale(prop.c) +
+seed_mod_glmer2<-glmer.nb(seeds~trmnt*scale(prop.c) +
                            offset(log(frt)) +
                            (1|site), data=plt_nr)
 
-summary(seed_mod_glmer2)
+summary(seed_mod_glmer_uns)
 isSingular(seed_mod_glmer2)
+#coefficient interpretation
+exp(2.14650)
+exp(2.14650+0.01382) #difference between treatments
 
 #######################
 #Code 12Feb 2019###

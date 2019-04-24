@@ -3,6 +3,7 @@ library(tidyverse)
 library(reshape2)
 library(chron)
 library(nlme)
+library(lme4)
 library(sjstats)
 library(lme4)
 library(car)
@@ -16,8 +17,7 @@ source("psw.R")
 
 conn <- dbConnect(RMariaDB::MariaDB(), host = '160.94.186.138',  dbname='fragbees', user = user, password = psw, port=8889)
 dbListTables(conn)
-specimen<- dbReadTable(conn, "fragbees2017_specimen") 
-species<- dbReadTable(conn, "fragbees2017_species")
+specimen<- dbReadTable(conn, "fragbees2017_allbees") 
 frag_sites<- dbReadTable(conn, "fragbees_sites")
 quadrats<- dbReadTable(conn, "fragbees2017_veg_quad")
 
@@ -45,14 +45,14 @@ length(unique(master$bee_sp))
 ######################
 ### all bees
 abun<- master %>% filter(site%in%alan_sites)%>%
-  filter(round>3|round==3)%>%
+
   group_by(site,round,month,day) %>%
   tally()%>%group_by(site)%>%
   summarise(sum_abun=sum(n))
 ### alter here for grouping by round or not
 
 mean<- master%>%filter(site%in%alan_sites)%>%
-  filter(round>3|round==3)%>%
+  
   group_by(site,round,month,day)%>%
   tally()%>%
   group_by(site)%>%
@@ -65,14 +65,14 @@ firstup <- function(x) {
 sites$site<-firstup(sites$site)
 
 abun_sites<-abun%>%left_join(sites, by="site")
-mean_sites<-mean%>%left_join(sites, by="site")
+mean_abun<-mean%>%left_join(abun_sites, by="site")
 
-abun_sites%>%ggplot(aes(prop.c,sum_abun))+geom_point(aes(color=site))+geom_smooth(method="glm")
-mean_sites%>%ggplot(aes(prop.c,avg_abun))+geom_point(aes(color=site))+geom_smooth(method="lm")
-
+mean_abun%>%ggplot(aes(prop.c,sum_abun))+geom_point(aes(color=site))+geom_smooth(method="glm")
+mean_abun%>%ggplot(aes(prop.c,avg_abun))+geom_point(aes(color=site))+geom_smooth(method="lm")
+mean_abun$site<-tolower(mean_abun$site)
 ####
 #using an average count
-log_lm<-lm(log(sum_abun)~prop.c,data=abun_sites)
+log_lm<-lm(log(sum_abun)~prop.c,data=mean_abun)
 
 summary(log_lm)
 qqPlot(resid(log_lm))
@@ -84,8 +84,7 @@ plot(log_lm)
 
 ### using count data with or without random effects
 ## the sum of all bees caught at each site round examined
-library(MASS)
-abun_nb<-glm.nb(sum_abun~prop.c,data=abun_sites)
+abun_nb<-glm.nb(sum_abun~prop.c,data=mean_abun)
 summary(abun_nb)
 plot(abun_nb)
 qqPlot(resid(abun_nb))
@@ -126,7 +125,7 @@ testUniformity(sim_abun)
 testDispersion(sim_abun)
 
 
-### This seems strange
+#### flower data
 ### I'm going to add a floral frequency variable to add floral abundance to the model.
 ###
 
@@ -192,8 +191,39 @@ summary(abun_flw_nb)
 
 #adding additional rounds seems to be the biggest driver of model change.
 
+### check if bee abundance is predictive of the total seed set produced at a site.
 
-##################bumbles only
+### seed set data
+seed_land<-read.csv("data/seed_land.csv")
+seed_land <-filter(seed_land, plot=="hi")
+
+seed_land$round<-as.factor(seed_land$round)
+
+
+# summary table
+plt_nr<- seed_land %>%
+  group_by(site,prop.c,trmnt, ID)%>%
+  summarise(frt=n(), trtflw=sum(unique(flowers)),
+            polov=sum(poll_ovules),
+            avg_polov=mean(poll_ovules),
+            seeds=sum(total.seeds),
+            avg_seed=mean(total.seeds),
+            totov=sum(total.ovules),
+            avg_totov=mean(total.ovules))
+
+plt_nr%>%ggplot(aes(site,frt,fill=site))+geom_boxplot()
+#use plt_nr to get a site level measure of seed set
+#note model takes the form of tot_seed/totfrt, so just some those?
+# first let's try with treatment
+plt_tot<-plt_nr%>% group_by(site,prop.c)%>%
+  summarise(frt=sum(frt),seedset=sum(seeds))
+# now, join to mean_abun
+
+plt_bee<-plt_tot%>%right_join(mean_abun,by=c("site","prop.c"))
+
+
+plt_bee_id<-plt_nr%>%right_join(mean_abun,by=c("site","prop.c"))
+##add bumble data%>%
 
 ## Bumble Bees Only
 
@@ -204,12 +234,109 @@ unique(master_bt$site)
 alan_sites<-c("Braaten","Howe","Nelson","Rudningen","Silis","Staples","Woltjer")
 
 masbb <- master_bumble %>% filter(site%in%alan_sites)%>%
-  filter(round>3|round==3)%>%
+ filter(round==3|round>3)%>%
   group_by(site,round,month,day) %>%
-  tally()
+  tally()%>%group_by(site)%>%
+  summarise(bb_abun=sum(n))%>%mutate(site=tolower(site))
+##
+plt_bee_bb<-plt_bee%>%left_join(masbb, by="site")
+
+plt_bee_bb_id<-plt_bee_id%>%left_join(masbb, by="site")
+### model
+#nb
+seed_bb_nb<-glm.nb(seedset~bb_abun+offset(log(frt)),data=plt_bee_bb)
+summary(seed_bb_nb)
+## just 7 data points; does bee abundance explain the site level average of seeds per fruit
+
+
+# coefficent with all rounds
+exp(-0.005976)
+# with only the rounds that overlapped with us
+exp(-0.006532)
+
+## intercept
+exp(2.408299)
+# 11.11504 seeds per fruit
+## if we increase the number of bumbles by 30
+# roughly the difference between our highes and lowest counts
+exp(2.408299-0.006532*20)
+# the mean number of seeds produced is about 2 fewer
+## not a huge difference
+# INterpretation:
+# a one unit increase in bumblebees leads to a 0.99% reduction in seed set across our plants.
+
+ggplot(data=plt_bee_bb_id, aes(bb_abun,seeds/frt, color=site))+geom_point()
+
+
+#all plants as data points
+# does bumble bee abundance explain individual level means of seeds per fruit?
+#without scaling
+seed_bb_id<-glm.nb(seeds~trmnt+prop.c+bb_abun+offset(log(frt)),data=plt_bee_bb_id)
+summary(seed_bb_id)
+
+#coefficients with no other paramters
+exp(-0.005889)
+exp(2.385424)
+
+### if you add trmnt
+#wihtout ag
+exp(-0.006178)
+
+#with ag the effect of a 20 unit increase in bb abund
+exp(2.458711-0.005642*20)
+#lose approximately 1 seed, holding ag constant
+
+#20 unit increase in bumbles
+exp(2.363359-0.006178*20)
+#again,about a 1 seed decrease
+
+
+#with scaling
+seed_bb_id_sc<-glm.nb(seeds~scale(bb_abun)+trmnt+prop.c+offset(log(frt)),data=plt_bee_bb_id)
+summary(seed_bb_id_sc)
+
+exp(2.15616)
+exp(-0.05471)
+exp(2.15616-0.05471*20)
+
+## thats a huge decrase! what's up? with this?
+sim_nb<-simulateResiduals(fittedModel =seed_bb_id, n = 250)
+plot(sim_nb)
+testUniformity(sim_nb)
+
+sim_sc<-simulateResiduals(fittedModel =seed_bb_id_sc, n = 250)
+plot(sim_sc)
+testUniformity(sim_sc)
+testDispersion(sim_sc)
+plotResiduals(sim_sc$scaledResidua)
+
+
+plotResiduals(plt_nr$prop.c, sim$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim$scaledResiduals)
+pred()
+plotResiduals(plt_bee_bb_id$bb_abun, sim_sc$scaledResiduals)
+
+### random effect
+seed_bb_id_re<-glmer.nb(seeds~scale(bb_abun)+trmnt+scale(prop.c)
+                        +offset(log(frt))+(1|site),data=plt_bee_bb_id)
+
+seed_bb_id_re2<-glmmTMB(seeds~scale(bb_abun)+trmnt+scale(prop.c)
+                        +offset(log(frt))+(1|site),
+                       family=nbinom2,data=plt_bee_bb_id)
+
+summary(seed_bb_id_re)
+summary(seed_bb_id_re2)### getting crazy tiny RE variances...
+
+
+## parameter almost the same
+exp(-0.04674)
+##################bumbles only
+
+
 
 masbb_net <- master_bumble %>% filter(site%in%alan_sites)%>%
   filter(round>3|round==3)%>%filter(method=="net")%>%
   group_by(site,round,month,day,method) %>%
-  tally()
+  tally()%>%group_by(site)%>%
+  summarise(sum_abun=sum(n))
 #####################
