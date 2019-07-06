@@ -1,6 +1,8 @@
 #Calculate area of counties
 #LAST TRY - WASN"T WORKING BUT NOW IT IS AFTER UPDATE
 # Some great mapping: http://eriqande.github.io/rep-res-web/lectures/making-maps-with-R.html
+
+#add in minnesota relative to US map; then MN map.
 #install.packages("maps")
 install.packages('ggsn',dependencies=TRUE)
  #remove.packages('TMB')
@@ -14,6 +16,7 @@ library(ggplot2)
 
 counties <- map_data("county")
 state <- map_data("state")
+usa<- map_data("usa")
 sites<- read.csv("data/pollination_2017_siteinfo.csv")
 site_points<-sites%>%select(site,latitude,longitude,prop.c)%>%
   rename(lat=latitude,long=longitude)%>%filter(site!="henningson"&site!="nygard")
@@ -28,16 +31,36 @@ ditch_the_axes <- theme(
   panel.grid = element_blank(),
   axis.title = element_blank()
 )
+
+
+
+###USA map
+### dif colors
+ggplot(data = state) + 
+  geom_polygon(aes(x = long, y = lat, fill = region, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  guides(fill=FALSE)+ ditch_the_axes 
+
+
+ ggplot() + 
+  geom_polygon(data = usa, aes(x=long, y = lat, group = group), fill = "gray", color = "black") + 
+   borders("state", xlim = c(-91.52137, -91.521371), ylim = c( 48.8227,  48.8228),colour="black") + 
+   coord_fixed(1.3)+#now add star for site ara
+   geom_point(aes(x =-95.43029, y = 45.52295),inherit.aes = FALSE,shape= 18,size = 3)+
+   ditch_the_axes 
+ 
+####
 map_dat <- read_csv("data/map_dat.csv")
 source("code/mn_all_counties.R")
 str(mn_counties)
 mn_map <- ggplot(data = mn_counties, mapping = aes(x = long, y = lat, group = as.character(group))) + 
   coord_fixed(1.3) + 
-  geom_polygon(color = "black", fill = "white") + 
+  #geom_polygon(color = "black", fill = "white") + #state county lines
   theme_bw() + 
-  #borders("state", xlim = c(-91.52137, -91.521371), ylim = c( 48.8227,  48.8228)) + 
+  borders("state", xlim = c(-91.52137, -91.521371), ylim = c( 48.8227,  48.8228),colour="black") + 
   ditch_the_axes + 
-  geom_point(data = site_points, aes(x = long, y = lat),inherit.aes = FALSE, size = 3)
+  #geom_point(data = site_points, aes(x = long, y = lat),inherit.aes = FALSE, size = 3)
+  geom_point(aes(x =-96.0, y = 45.52295),inherit.aes = FALSE,shape= 18,size = 10)
 
 ##look at your nice map!
 mn_map
@@ -53,8 +76,7 @@ mn_map_zoom <- ggplot(data = mn_counties, mapping = aes(x = long, y = lat, group
   ditch_the_axes + 
   geom_point(data = site_points, aes(x = long, y = lat),inherit.aes = FALSE, size = 3)+
   geom_text(data=site_points,aes(x=long, y=lat, label=prop.c),inherit.aes = FALSE,hjust=0.5, vjust=-0.6)+
-  coord_cartesian(xlim=c(-96.8, -95), ylim=c(46, 45))+
-  ggsn::scalebar(site_points,dist=20)
+  coord_cartesian(xlim=c(-96.8, -95), ylim=c(46, 45))
 
 
 mn_map_zoom

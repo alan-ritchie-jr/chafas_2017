@@ -1,23 +1,23 @@
 ###################
 ###Seed models####
 #################
-install.packages("glmmTMB")
-install.packages("ggeffects")
-install.packages("sjPlot")
-install.packages("blmeco")
-install.packages("aods3")
-install.packages("car")
-install.packages("lme4")
-install.packages("Matrix")
-install.packages("snakecase")
-install.packages("DHARMa")
-
+#install.packages("glmmTMB")
+#install.packages("ggeffects")
+#install.packages("sjPlot")
+#install.packages("blmeco")
+#install.packages("aods3")
+#install.packages("car")
+#install.packages("lme4")
+#install.packages("Matrix")
+#install.packages("snakecase")
+#install.packages("DHARMa")
+#install.packages("optimx")
 ####
 
-#Dan start here; run lines 20-59
 
 # These are all needed for s
 library(TMB)
+library(optimx)
 library(aods3)
 library(blmeco)
 library(car)
@@ -34,164 +34,293 @@ seed_land<-read.csv("data/seed_land.csv")
 seed_land <-filter(seed_land, plot=="hi")
 
 seed_land$round<-as.factor(seed_land$round)
+# add seedOv
 
 
-# summary table
-plt_nr<- seed_land %>%
-  group_by(site,prop.c,trmnt, ID)%>%
-  summarise(frt=n(), trtflw=sum(unique(flowers)),
+# summary table of plant
+plt_nr<- seed_land %>%mutate( trmnt = fct_recode(trmnt, "Supplemental Pollination" = "hp", "Open Pollination"="op"), 
+                              seed_ov= total.seeds/total.ovules, pol_ov=poll_ovules/total.ovules)%>%
+  group_by(site,prop.c,trmnt,ID,round)%>%#calculate fruit removed
+  mutate(frt_removed_rd=sum(frt_removed)/n(), trt_flw_rd=sum(flowers)/n())%>%
+  ungroup()%>%
+  group_by(site,prop.c,trmnt,ID)%>%
+  summarise(frt=n(),trt_flw=sum(trt_flw_rd),tot_frt_removed=sum(frt_removed_rd),
+            ab_ov=sum(abrt.ovules),
+            nopol_ov=sum(virgin.ovules)+sum(abrt.ovules),
             polov=sum(poll_ovules),
             avg_polov=mean(poll_ovules),
             seeds=sum(total.seeds),
-            avg_seed=mean(total.seeds),
+            mean_seed=mean(total.seeds),
+            mean_seed_ov=mean(seed_ov),
+            mean_poll_ov=mean(pol_ov),
             totov=sum(total.ovules),
-            avg_totov=mean(total.ovules))
+            mean_totov=mean(total.ovules),
+            seeds_frt=seeds/frt,mean_sf=mean(seeds/frt))
+
+plt_nr%>%ggplot(aes(prop.c,mean_totov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+plt_nr%>%ggplot(aes(prop.c,mean_seed_ov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+plt_nr%>%ggplot(aes(prop.c,mean_poll_ov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+#site level means
+plt_site<-plt_nr%>%group_by(site,prop.c,trmnt)%>%
+  summarise(sum_frt=sum(frt),n_ID=n_distinct(ID),sum_totov=sum(totov),sum_seed=sum(seeds),
+            mean_frt=mean(frt),mean_totov=mean(mean_totov),mean_seed=mean(mean_seed),
+            mean_seed_ov_site=mean(mean_seed_ov),
+            sd_seed_ov=sd(mean_seed_ov),
+            seed_frt=sum_seed/sum_frt,
+            mean_totov_site=mean(mean_totov),
+            mean_polov_site=mean(mean_poll_ov),
+            seed_stab=mean_seed_ov_site/(sd_seed_ov*100))
+
+trmnt_mean<-plt_nr%>%group_by(trmnt)%>%
+  summarise(sum_frt=sum(frt),n_ID=n_distinct(ID),sum_totov=sum(totov),sum_seed=sum(seeds),
+            mean_frt=mean(frt),mean_totov=mean(mean_totov),mean_seed=mean(mean_seed),
+            mean_seed_ov_site=mean(mean_seed_ov),
+            sd_seed_ov=sd(mean_seed_ov),
+            seed_frt=sum_seed/sum_frt,
+            mean_totov_site=mean(mean_totov),
+            mean_polov_site=mean(mean_poll_ov),
+            seed_stab=mean_seed_ov_site/(sd_seed_ov*100))
+
+#plot seed stab
+plt_site%>%ggplot(aes(prop.c,seed_stab, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+plt_site%>%ggplot(aes(prop.c,mean_seed_ov_site, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+plt_site%>%ggplot(aes(prop.c,mean_polov_site, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+plt_site%>%ggplot(aes(prop.c,n_ID, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+##pollen limitation
+plt_site_pl<-plt_site%>%
+  group_by(site,prop.c)%>%
+  summarise(pl=log(mean_seed_ov_site[trmnt=="SP"]/mean_seed_ov_site[trmnt=="OP"]),
+            pl_seed=log(mean_seed[trmnt=="SP"]/mean_seed[trmnt=="OP"]),
+            pl_polov=log(mean_polov_site[trmnt=="SP"]/mean_polov_site[trmnt=="OP"]))
+
+##
+trmnt_means<-plt_nr%>%group_by(trmnt)%>%
+  summarise(sum_frt=sum(frt),sum_totov=sum(totov),sum_seed=sum(seeds),
+            mean_frt=mean(frt),mean_totov=mean(totov),mean_seed=mean(mean_seed),
+            mean_seed_ov=mean(mean_seed_ov),
+            seed_frt=sum_seed/sum_frt,
+            totov_frt=sum_totov/sum_frt, seed_totov=sum_seed/sum_totov)
 
 
+####Linear models for site level variables
 
 
+#mean seeds/ovule per site
+site_seed_ov_mod<-lm(mean_seed_ov_site~trmnt*prop.c,data=plt_site)
 
+summary(site_seed_ov_mod)
+qqPlot(residuals(site_seed_ov_mod4))
+plot(site_seed_ov_mod4)
+
+#mean poll ovules/ovule per site
+site_pol_ov_mod<-lm(mean_polov_site~trmnt+prop.c,data=plt_site)
+summary(site_pol_ov_mod)
+#same issue w/ no interaction model
+
+#mean seeds per site per trmnt lm
+site_mean_seed_mod<-lm(mean_seed~trmnt*prop.c,data=plt_site)
+summary(site_mean_seed_mod)
+qqPlot(residuals(site_mean_seed_mod))
+
+site_mean_seed_mod2<-lm(mean_seed~trmnt,data=plt_site)
+summary(site_mean_seed_mod2)
+
+###linear model for pollen limitation effect size measure from ekroos 2015 & Knight 2005
+
+#diagnostic plot of linear relationship between ag and pl (using mean seed per ovule)
+plt_site_pl%>%ggplot(aes(prop.c,pl))+geom_point()+geom_smooth(method="lm")
+plt_site_pl%>%ggplot(aes(prop.c,pl_polov))+geom_point()+geom_smooth(method="lm")
+#pl mod
+site_pl_mod<-lm(pl~prop.c,data=plt_site_pl)
+
+summary(site_pl_mod)
+AIC(site_pl_mod)
+plot(site_pl_mod)
+ggplot(site_pl_mod)
+
+####plot of model
+pl.predict<-cbind(as.data.frame(plt_site_pl), predict(site_pl_mod, interval = 'confidence'))
+
+# plot the points (actual observations), regression line, and confidence interval
+p <- ggplot(pl.predict, aes(prop.c,pl))
+p <- p + geom_point()
+p <- p + geom_line(aes(prop.c, fit))
+p <- p + geom_ribbon(aes(ymin=lwr,ymax=upr), alpha=0.3)
+p
+
+#t.test for difference in mean untreated frt remvoal between treatment
+t.test(tot_frt_removed~trmnt,data=plt_nr)
+t.test(trt_flw~trmnt,data=plt_nr)
+#
+summary(lm(tot_frt_removed~prop.c,data=plt_nr))
+
+
+plt_nr%>%ggplot(aes(as.factor(prop.c),mean_seed_ov, color=trmnt))+geom_boxplot()
+plt_nr%>%ggplot(aes(as.factor(prop.c),mean_seed, color=trmnt))+geom_boxplot()
+
+
+plt_nr%>%ggplot(aes(prop.c,totov, color=trmnt))+geom_point()+
+  geom_smooth(method=lm)
+
+plt_nr%>%ggplot(aes(prop.c,frt, color=trmnt))+geom_jitter()+
+  geom_smooth(method=lm)
+
+plt_nr%>%ggplot(aes(prop.c,seeds, color=trmnt))+geom_jitter()+
+  geom_smooth(method=lm)
+
+plt_nr%>%ggplot(aes(prop.c,mean_seed, color=trmnt))+geom_jitter()+
+  geom_smooth(method=lm)
+
+plt_nr%>%ggplot(aes(prop.c,mean_seed_ov, color=trmnt))+geom_jitter()+
+  geom_smooth(method=lm)
+
+plt_nr%>%ggplot(prop.c)
+site_var<-lm(mean_seed~site,plt_nr)
+
+trt_frt_var<-lm(log(frt/trt_flw)~trmnt,plt_nr)#trt_flw
+
+dat <- plt_nr
+
+trt_frt_var<-lm(seeds/totov~prop.c*trmnt,plt_nr)
+summary(trt_frt_var)
+
+summary(trt_frt_var)
+qqPlot(residuals(trt_frt_var))
+
+
+sim2<-simulateResiduals(fittedModel = seed_ov_var, n = 250)# warning message because glmmTMB was used
+plot(sim2) # no strange patterns in predicted vs residuals
+testDispersion(sim2)
+testUniformity(sim2)
+testZeroInflation(sim2)
+
+site_anova<-aov(mean_seed~site,plt_nr)
+summary(site_anova)
+qqPlot(residuals((site_var)))##fits
+qqPlot(residuals(site_anova))
+
+seed_land%>%ggplot(aes(as.factor(prop.c),total.ovules, color=trmnt))+geom_boxplot()
+plt_site%>%ggplot(aes(as.factor(prop.c),mean_seed_ov, color=trmnt))+geom_point()
+plt_nr%>%ggplot(aes(as.factor(prop.c),frt, color=trmnt))+geom_boxplot()
+
+qplot(mean_seed,var_s,data=plt_nr)+
+## linear (quasi-Poisson/NB1) fit
+geom_smooth(method="lm",formula=y~x-1)+
+  ## smooth (loess)
+  geom_smooth(colour="red")+
+  ## semi-quadratic (NB2/LNP)
+  geom_smooth(method="lm",formula=y~I(x^2)+offset(x)-1,colour="purple")+
+  ## Poisson (v=m)
+  geom_abline(a=0,b=1,lty=2)
+
+
+###plot of ag gradient
+plt_nr%>%ggplot(aes(fct_reorder(site, prop.c),prop.c))+geom_point()+
+  labs(x="Site" ,y="% Agriculture")+
+  ggtitle("Fig. 2: Study System Agricultural Land-use Gradient")+theme_bw()
+                
 ############
 #   models #
 ###########
 ## which distributions are appropriate for the data?
-qqp(plt_nr$avg_seed, "norm")# avg seed per fruit looks pretty good
+qqp(plt_nr$mean_seed, "norm")# avg seed per fruit looks pretty good
 
 nbinom <- fitdistr(plt_nr$seeds, "Negative Binomial")
 qqp(plt_nr$seeds, "nbinom", size = nbinom$estimate[[1]], mu = nbinom$estimate[[2]])
 #count data also look good for nb distribution
 
-# Dan run 69-96
 
-
-### with DHARMa 
-
+########################
+###NEgative binomial models and interpretation of fixed effects####
+##########
+seed_ov_lm<-lm(mean_seed_ov~trmnt, data=plt_site)
+summary(seed_ov_lm)
 ###
+seed_ov_mod<-glmmTMB(mean_seed_ov~trmnt +(1|site), data=plt_nr)
 
-##nb models
+summary(seed_ov_mod)
+qqPlot(residuals(seed_ov_mod))
 
-# total seed produced by treated fruit; number of fruit as offset
+###########################
+#### average seed models; same response as nb models, just normall distributed######
 
-#variance scales linearly
-seed_mod<-glmmTMB(seeds~trmnt*prop.c +
-                  offset(log(frt)) +
-                    (1|site),family=nbinom1, data=plt_nr) 
+#mean seed
 
-summary(seed_mod)
+seed_mean_mod_TMB<-glmmTMB(mean_seed~trmnt*prop.c +(1|site), data=plt_nr) 
+summary(seed_mean_mod_TMB)
 
+seed_mean_mod<-lmer(mean_seed~trmnt*prop.c +(1|site), data=plt_nr)
 
-exp(2.2044025)#hp plants have mean of 9 seeds @ intercept
-exp(2.2044025+0.1968647)#op plants have mean of 11 @ intercept
+summary(seed_mean_mod)
 
-#effect of 1 unit change of slope on hp
-exp(-0.0008916) #0.9991 x seed
-#effect of 50 unit change
-exp(2.2044025-0.0008916*50)# a 50 unit change would lead to a 0.4 seed drop 
+seed_mean_mod2_TMB<-glmmTMB(mean_seed~trmnt+prop.c +(1|site), data=plt_nr) 
+summary(seed_mean_mod2_TMB)
 
-# if a plant has 10 seeds per fruit, and 100 fruits in its lifetime, you'd have 1000 seeds
-# so a 0.4 drop in average seed/fruit= 
-9.5*100
-#only a loss of 50 fruit
-950/1000 #or a 5% loss in seed set; not a very large effect
+seed_mean_mod2<-lmer(mean_seed~trmnt+prop.c +(1|site), data=plt_nr) 
+summary(seed_mean_mod2)
 
-#versus 1.6 seeds per fruit
+### Confidence intervals
 
-8.4*100
-840/1000 #16% loss in seed set; larger, but maybe not signicant
+seed_mod_CI_TMB_uni<- confint(seed_mean_mod_TMB,method="uniroot")
+seed_mod_CI_TMB_uni
 
+seed_mod_CI_TMB_wald<- confint(seed_mean_mod_TMB)
+seed_mod_CI_TMB_wald
 
-
-exp(2.2044025+0.1968647) #11 seeds @ 20% ag
-exp(2.2044025+0.1968647) -exp((2.2044025+0.1968647)+((-0.0005999-0.0026218)*50)) 
-#a 50 unit change would lead to  1.64 seeds per fruit lost in op treatment
+seed_mod_CI2<-confint(seed_mean_mod2_TMB)
+seed_mod_CI2
 
 
 
+#Frt mod; was there a difference in frt matured between  
+frt_mod<-glmmTMB(frt~trmnt*prop.c+(1|site), data=plt_nr,family=nbinom2)
+summary(frt_mod)
 
-## variance is scales quadratically with mean
-seed_mod2<-glmmTMB(seeds~trmnt*prop.c +
-                     offset(log(frt)) +
-                     (1|site),family=nbinom2, data=plt_nr) 
-
-summary(seed_mod2)
-
-exp(2.1825379)# hp plants have mean 8.868 seeds/fruit @ intercept
-exp(2.1825379+0.1873513) #op plants have mean 1.69 seeds/fruit @intercept
-
-#effect of 1 unit change of slope on hp
-exp(-0.0005999) #0.99940 x seed
-#effect of 50 unit change
-exp(2.1825379)-exp(2.1825379-(0.0005999*50))# a 50 unit change would lead to a .26 seed drop
-#effect of 1 unit change of slope on op
-
-exp((2.1825379+0.1873513)) #10.7 seeds @ 20% ag
-exp((2.1825379+0.1873513))-exp((2.1825379+0.1873513)+((-0.0005999-0.0026218)*50)) 
-#a 50 unit change would lead to  1.6 seeds lost in op treatment
-
-### similar story, about 3% vs 16% loss in seed if this relationship is true.
-
-###normal models
-seed_mod3<-lmer(avg_seed~trmnt+scale(prop.c)+(1|site),data=plt_nr)
-summary(seed_mod3)
-plot(seed_mod3)
-
-qqnorm(resid(seed_mod3))
-qqline(resid(seed_mod3))
-
-seed_mod3p<-lme(avg_seed~trmnt*scale(prop.c),data=plt_nr,random=~1|site)
-summary(seed_mod3p)
-
-#if you drop scaling you get very high negative correlation between intercept and prop.c
-
-seed_mod3TMB<-glmmTMB(avg_seed~trmnt*prop.c+(1|site),data=plt_nr)
-summary(seed_mod3TMB)
-
-  
-  
-seed_mod4<-lmer(avg_seed~trmnt+prop.c+(1|site),data=plt_nr)          
-summary(seed_mod4)
-qqnorm(resid(seed_mod4))
+frt_mod2<-glmmTMB(frt~trmnt+prop.c+(1|site), data=plt_nr,family=nbinom2)
+summary(frt_mod2)
 
 
-###using glmer.nb
-
-####glmer.nb
-seed_mod_glmer<-glmer.nb(seeds~trmnt*scale(prop.c) +
-                           offset(log(frt)) +
-                           (1|site), data=plt_nr)
-
-summary(seed_mod_glmer)
-isSingular(seed_mod_glmer)
-
-
-# these give identical results
-
-
-seed_mod_glmer2<-glmer.nb(seeds~trmnt+scale(prop.c) +
-                            offset(log(frt)) +
-                            (1|site), data=plt_nr)
-
-summary(seed_mod_glmer2)
-isSingular(seed_mod_glmer2)#nto coming up similar, parameters are similar
-
-
-
-#CIs
-seed_mod_CI<- confint(seed_mod_glmer,method="profile")
-seed_mod_CI_Wald <- confint(seed_mod,method="wald")
-seed_mod_CI_root<- confint(seed_mod2,method="uniroot")
-seed_mod_CI_root
-seed_mod_CI_Wald
+# frt unimpacted by prop.c or trmtn
+sim2<-simulateResiduals(fittedModel = frt_mod, n = 250)# warning message because glmmTMB was used
+plot(sim2) # no strange patterns in predicted vs residuals
+testDispersion(sim2)
+testUniformity(sim2)
+testZeroInflation(sim2)
+#control for re
+new_plt<-plt_nr
+# set ID and site to NA in new DF
+new_plt$ID=NA
+new_plt$site=NA
+#calculate new predicted values that average over the REs  
+pred = predict(frt_mod, newdata = new_plt)
+#
+plotResiduals(pred, sim2$scaledResiduals) #doesn't differ from direct approach
+#plot against other predictors
+par(mfrow=c(1,2))
+plotResiduals(plt_nr$prop.c, sim2$scaledResiduals)
+plotResiduals(plt_nr$trmnt, sim2$scaledResiduals)
+## frt mod looks okay!
 
 
+#Seed mod, no offset
+seed_mod_no<-glmmTMB(seeds~trmnt*prop.c+(1|site), data=plt_nr,family=nbinom2)
+summary(seed_mod_no)
+
+seed_mod_no2<-glmmTMB(seeds~trmnt+prop.c+(1|site), data=plt_nr,family=nbinom2)
+summary(seed_mod_no2)
 
 
 ####
-#the model specification is getting confusing.
-####
-
-
-
 sim2<-simulateResiduals(fittedModel = seed_mod2, n = 250)# warning message because glmmTMB was used
 plot(sim2) # no strange patterns in predicted vs residuals
 testDispersion(sim2)
@@ -206,79 +335,11 @@ testUniformity(sim)
 testZeroInflation(sim)
 
 
-#gaussian mixed model
-sim_lmm<-simulateResiduals(fittedModel = seed_lmm, n = 250)
-plot(sim_lmm)
-testUniformity(sim_lmm)
-testDispersion(sim_lmm)
-#lm with averaged seeds per plant
-sim_lm<-simulateResiduals(fittedModel = seed_lm, n = 250)# warning message because glmmTMB was used
-plot(sim_lm)
-testDispersion(sim_lm) 
-testUniformity(sim_lm)
 
 
-
-####glmer.nb
-seed_mod_glmer<-glmer.nb(seeds~trmnt*scale(prop.c) +
-                           offset(log(frt)) +
-                           (1|site), data=plt_nr)
-
-summary(seed_mod_glmer)
-isSingular(seed_mod_glmer)
-
-# these give identical results
-
-seed_mod_glmer_uns<-glmer.nb(seeds~trmnt*prop.c +
-                           offset(log(frt)) +
-                           (1|site), data=plt_nr)
-
-
-seed_mod_glmer2<-glmer.nb(seeds~trmnt*scale(prop.c) +
-                           offset(log(frt)) +
-                           (1|site), data=plt_nr)
-
-summary(seed_mod_glmer_uns)
-isSingular(seed_mod_glmer2)
-#coefficient interpretation
-exp(2.14650)
-exp(2.14650+0.01382) #difference between treatments
-
-#######################
-#Code 12Feb 2019###
-####
-# No interation; drop to look at fixed effects in isolation
-
-#gaussian mixed model, only site as RE
-seed_lmm<-lmer(avg_seed~trmnt*scale(prop.c)+
-                    (1|site), data=plt_nr) 
-seed_lmm<-lme(avg_seed~trmnt*prop.c,data=plt_nr,random=~1|site)
-summary(seed_lmm)
-
-#confidence intervals
-
-seed_mod_CI<- confint(seed_mod,method="profile")
-seed_mod_CI_Wald <- confint(seed_mod2,method="wald")
-seed_mod_CI_root<- confint(seed_mod2,method="uniroot")
-seed_mod_CI_root
-seed_mod_CI_Wald
-
-seed_mod2_CI<- confint(seed_mod_glmer,method="profile")
-seed_mod2_CI
-seed_mod2_CI_Wald <- confint(seed_mod_glmer,method="Wald")
-seed_mod2_CI_Wald
-seed_mod2_CI_boot<- confint(seed_mod2,method="boot")
-#
-seed_mod_CI<- confint(seed_mod_glmer,method="profile")
-seed_mod_CI_Wald <- confint(seed_mod_glmer,method="wald")
-seed_mod_CI_boot<- confint(seed_mod_glmer,method="boot")
-seed_mod_CI_Wald
-seed_mod_CI_boot
-
-
-
-
-###Use DHARMa to check residuals
+###Use DHARMa to check residuals and assumptions
+### compare nbinom1 vs nbinom2 parameterizations. 
+#if huge differences between residual plots further explore
 
 sim<-simulateResiduals(fittedModel = seed_mod_glmer, n = 250)# warning message because glmmTMB was used
 plot(sim) # no strange patterns in predicted vs residuals
@@ -290,20 +351,6 @@ plot(sim2)
 testDispersion(sim2)#both this and interaction model have similar results, 
 #including the ID RE seems to effect dispersion test
 testUniformity(sim2)
-#gaussian mixed model
-sim_lmm<-simulateResiduals(fittedModel = seed_lmm, n = 250)
-plot(sim_lmm)
-testUniformity(sim_lmm)
-testDispersion(sim_lmm)
-#lm with averaged seeds per plant
-sim_lm<-simulateResiduals(fittedModel = seed_lm, n = 250)# warning message because glmmTMB was used
-plot(sim_lm)
-testDispersion(sim_lm) 
-testUniformity(sim_lm)
-#pollinated ovules model
-
-sim_pol<-simulateResiduals(fittedModel = polov_mod, n = 250)
-plot(sim_pol)
 
 #As a check because glmmTMB can't separate out random effect from predicted effects
 # recalculate predictions by hand - see help ?predict.glmmTMB
@@ -322,65 +369,12 @@ plotResiduals(plt_nr$prop.c, sim$scaledResiduals)
 plotResiduals(plt_nr$trmnt, sim$scaledResiduals)
 #heteroscedascticity doesn't look excessive
 
-#for no interaction model
-pred2 = predict(seed_mod2, newdata = new_plt)
-plotResiduals(pred2, sim$scaledResiduals) 
-plotResiduals(plt_nr$prop.c, sim2$scaledResiduals)
-plotResiduals(plt_nr$trmnt, sim2$scaledResiduals)
-#same here
-
-#for lmm
-par(mfrow=c(1,2))
-plotResiduals(plt_nr$prop.c, sim_lmm$scaledResiduals)
-plotResiduals(plt_nr$trmnt, sim_lmm$scaledResiduals)
-testDispersion(sim_lmm) 
-par(mfrow=c(1,1))
-### some other plots
-
-par(mfrow=c(1,2))
-plotResiduals(plt_nr$prop.c, sim_lm$scaledResiduals)
-plotResiduals(plt_nr$trmnt, sim_lm$scaledResiduals)
-
-testDispersion(sim) #test for overdispersion; our model accounts for this somewhat
-#its worth nothing that while we get a significant value, the parameter is very small
-
-
-#histogram to check for zero values in response
-ggplot(plt_nr, aes(x=seeds)) + 
-  geom_histogram(fill="grey", color="black")+ylab("Count")+xlab("Seeds Produced by Treated Fruit")
-+facet_grid(.~trmnt)
-#for pollinated ovules
-ggplot(plt_nr, aes(x=polov)) + 
-  geom_histogram(fill="grey", color="black")+
-  ylab("Count")+xlab("Pollinated Ovules Produced by Treated Fruit")+facet_grid(.~trmnt)
-
-ggplot(plt_nr, aes(x=avg_seed)) + 
-  geom_histogram(fill="grey", color="black")+ylab("Count")+xlab("Avg Seed per Treated Fruit")+
-  facet_grid(.~trmnt)
-
-### not many zeroes!
 
 
 
-###################################
-
-#total pollinated ovules produced by treated fruit; number of fruit as offset
-polov_mod<-glmmTMB(polov~trmnt*scale(prop.c) +
-                     offset(log(frt)) +
-                     (1|site/ID),family=nbinom1, data=plt_nr) 
-
-summary(polov_mod)
-
-#CIs 
-polov_mod_CI_prof <- confint(polov_mod)
-polov_mod_CI_quad <- confint(polov_mod,method="wald")
-polov_mod_CI_prof
-polov_mod_CI_quad
-
-
-
+#########################
 #Plotting predicted effect and actual data
-
+################
 
 #Used sjPlot package and ggeffects
 #use get_model_data to predict fitted values for hp and op at each level of % ag (prop.c)
@@ -392,19 +386,13 @@ polov_mod_CI_quad
 ### get_model_data + ggplot version
 theme_set(theme_bw())
 #run get_model_data to extract ggplot usable output
-s<-get_model_data(seed_mod,ci.lvl= .95, type="pred",terms=c("prop.c","trmnt"), 
+s<-get_model_data(seed_mean_mod_TMB,ci.lvl= .95, type="pred",terms=c("prop.c","trmnt"), 
                   pred.type="re", colors= "bw") 
-
-scaled_values<-scale(plt_nr$prop.c)
-attributes(scaled_values)
+s<-s%>%mutate(group = fct_recode(group, 
+                                 "Supplemental Pollination" = "SP","Open Pollination"="OP"))
 ### make separate dataframes for CI for plot
-shp<-s%>%filter(group=="hp")
-sop<-s%>%filter(group=="op")
-s2hp<-s2%>%filter(group=="hp")
-s2op<-s2%>%filter(group=="op")
-s$predicted
-
-effect_plot
+shp<-s%>%filter(group=="Supplemental Pollination")
+sop<-s%>%filter(group=="Open Pollination")
 
 ###make plot for seed model
 ggplot(data=s, aes(x, predicted),linetype=group)+
@@ -414,8 +402,8 @@ ggplot(data=s, aes(x, predicted),linetype=group)+
   geom_ribbon(data=shp,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   geom_ribbon(data=sop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   labs(shape="Treatment",linetype="Predicted Response")+
-  xlab("% Agriculture")+ylab("Seeds per Fruit")+
-  ggtitle("Effect of % Agriculture on Seed Production",
+  xlab("% Agriculture")+ylab("Mean Seeds/Treated Fruit per Plant ")+
+  ggtitle("Fig. 3: Effect of % Agriculture on Seed Set",
           subtitle="Predicted Response vs. Data")
 
 #Note: I haven't figured out how to facet both the data and the predicted values by treatment
@@ -471,113 +459,4 @@ ggplot(data=plt_nr,aes(prop.c, (seeds/frt)))+
   xlab("% Agriculture")+ylab("Seeds per Fruit")+
   ggtitle("Effect of % Agriculture on Seed Production",
           subtitle="Predicted Response vs. Data")
-
-
-
-#Dan after this point its mdoel assessment code 
-
-
-
-
-# Test of significance of fixed effects using 
-#not sure whether type II or III anova is appropriate to test fixed effects
-# type III is the p value of the coefficient conditional on the other coefficients and the interaction!
-
-Anova(seed_mod, type= "III")
-
-drop1(seed_mod,test="Chisq")
-
-#residuals
-ggplot(data = NULL, aes(y = resid(seed_mod, type = "pearson"),
-                        x = fitted(seed_mod))) + geom_point()
-qq.line = function(x) {
-  # following four lines from base R's qqline()
-  y <- quantile(x[!is.na(x)], c(0.25, 0.75))
-  x <- qnorm(c(0.25, 0.75))
-  slope <- diff(y)/diff(x)
-  int <- y[1L] - slope * x[1L]
-  return(c(int = int, slope = slope))
-}
-QQline = qq.line(resid(seed_mod, type = "pearson"))
-ggplot(data = NULL, aes(sample = resid(seed_mod, type = "pearson"))) +
-  stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
-
-###r2 approximation from https://stats.stackexchange.com/questions/95054/how-to-get-an-overall-p-value-and-effect-size-for-a-categorical-factor-in-a-mi
-r2.corr.mer <- function(m) {
-  lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
-  summary(lmfit)$r.squared
-}
-
-r2.corr.mer(seed_mod)
-
-r2.corr.mer(polov_mod)
-
-r2.corr.mer(prop_ov_mod)
-#alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
-1-var(residuals(seed_mod))/(var(model.response(model.frame(seed_mod))))
-####
-
-### plot fitted values for response
-#conditioned on random effects
-#### Try ggeffects and plot function??
-
-mydf<-ggpredict(seed_mod, terms = c("prop.c","trmnt"),type="fe")
-ggplot(mydf, aes(x, predicted,shape=group)) + geom_line()+facet_wrap(~group)
-
-
-
-
-##########
-### alternative parameterization (see bolker glmm FAQ)
-stmb_plt2<-glmmTMB(seeds~trmnt*scale(prop.c)+
-                   scale(temp.start)+ offset(log(fruit_count))+
-                    (1|site/ID),family=nbinom2, data=plt) 
-
-summary(stmb_plt2)
-### add type 3
-Anova(stmb_plt2)
-
-
-ggplot(data = NULL, aes(y = resid(stmb_plt2, type = "pearson"),
-                        x = fitted(stmb_plt2))) + geom_point()
-qq.line = function(x) {
-  # following four lines from base R's qqline()
-  y <- quantile(x[!is.na(x)], c(0.25, 0.75))
-  x <- qnorm(c(0.25, 0.75))
-  slope <- diff(y)/diff(x)
-  int <- y[1L] - slope * x[1L]
-  return(c(int = int, slope = slope))
-}
-QQline = qq.line(resid(stmb_plt2, type = "pearson"))
-ggplot(data = NULL, aes(sample = resid(stmb_plt2, type = "pearson"))) +
-  stat_qq() + geom_abline(intercept = QQline[1], slope = QQline[2])
-
-#confidence intervals
-stmb_plt2_CI_prof <- confint(stmb_plt2)
-stmb_plt2_CI_quad <- confint(stmb_plt2,method="Wald")
-stmb_plt2_CI_prof
-stmb_plt2_CI_quad
-
-
-r2.corr.mer(stmb_plt2)
-#alternative measure from same source as r2.corr.mer and in the following paper: https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.1572
-1-var(residuals(stmb_plt2))/(var(model.response(model.frame(stmb_plt2))))
-####
-
-## starting temp is most significant predictor
-# significantly colder days in rd 4 (and some in rd 3) impacted seed set
-
-##total polov glmmTMB
-potmb_plt<-glmmTMB(polov~trmnt*scale(prop.c) +scale(temp.start)+ 
-                     offset(log(fruit_count))+
-                     (1|site/ID),family=nbinom1, data=plt) 
-summary(potmb_plt)
-# same results with polov
-
-
-### Plotting output
-
-
-
-
 

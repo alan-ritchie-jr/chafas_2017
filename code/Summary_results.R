@@ -1,5 +1,6 @@
-### April 2019: check out what fruit level responses and ovules n shit.
-
+### April 2019: check out what fruit level responses and ovules
+install.packages("geosphere")
+library(geosphere)
 library(lme4)
 library(nlme)
 library(glmmTMB)
@@ -14,11 +15,14 @@ seed_land<-read.csv("data/seed_land.csv")
 seed_land<-seed_land%>%filter(plot=="hi")
 
 
+distm(c(sites$latitude,sites$longitude),fun=distHaversine)
 
+site_coord=sites%>%select(longitude,latitude)
 
-
-
-
+site_dist<-distm(site_coord,fun=distHaversine)
+mean(site_dist)
+max(site_dist)
+min(site_dist)
 ####
 mean(sites$prop.c)
 sd(sites$prop.c)
@@ -61,13 +65,19 @@ tot_seed_tbl<-seed_land%>%
   filter(plot=="hi")%>%mutate(seeds_per_ovule_frt=total.seeds/total.ovules)%>%
   group_by(trmnt,ID,site)%>%
   summarise(sum_seeds=sum(total.seeds), sum_ovules=sum(total.ovules),n_fruit=n(), 
-            seeds_fruit=sum_seeds/n_fruit,
+            seeds_fruit=sum_seeds/n_fruit, mean_seed_frt=mean(total.seeds),
             ovules_fruit=sum_ovules/n_fruit,seeds_per_ovule=sum_seeds/sum_ovules,
             mean_seeds_per_ovule=mean(seeds_per_ovule_frt))
-            
+
+#figure out what is up with seeds, fruits, and ovules            
+seed_land%>%ggplot(aes(as.factor(prop.c),total.seeds,fill=trmnt))+geom_boxplot()
+seed_land%>%ggplot(aes(as.factor(prop.c),total.ovules,fill=trmnt))+geom_boxplot() 
+seed_land%>%gg
+
 
 indi_seed_tbl%>%ggplot(aes(trmnt,sum_seeds/sum_ovules,fill=trmnt))+geom_boxplot()
 indi_seed_tbl%>%ggplot(aes(trmnt,mean_seeds_per_ovule,fill=trmnt))+geom_boxplot()
+indi_seed_tbl%>%ggplot(aes(trmnt,sum_ovules/n_fruit,fill=trmnt))+geom_boxplot()
 ## 95CIs for mean # fruit per treatment
 # sp 
 u_sp <- 5.17
@@ -176,6 +186,8 @@ s_o_trmnt_q<-glm(sum_seeds/sum_ovules~trmnt,family=quasibinomial,weights=sum_ovu
 
 summary(s_o_trmnt_q)
 
+# quasi and normal binomial give same result.
+
 #test glmm
 s_o_trmnt_glmm<-glmer(sum_seeds/sum_ovules~trmnt+(1|ID),family=binomial,weights=sum_ovules,
                      data=indi_seed_tbl)
@@ -199,6 +211,19 @@ testDispersion(s_o_glmm_sim)
 testUniformity(s_o_glmm_sim)
 testZeroInflation(s_o_glmm_sim)
 
+####
+# # of ovules per fruit
+#####
+ov_frt_mod<-glm.nb(sum_ovules~trmnt+offset(log(n_fruit)),data=indi_seed_tbl)
+
+summary(ov_frt_mod)
+
+ov_frt_mod_drop<-glm.nb(sum_ovules~1+offset(log(n_fruit)),data=indi_seed_tbl)
+
+anova(ov_frt_mod,ov_frt_mod_drop)
+
+ov_frt_lm<-lm(ovules_fruit~trmnt,data=indi_seed_tbl)
+summary(ov_frt_lm)
 
 
 #########################################
@@ -235,11 +260,13 @@ mean_frt_rem<-seed_land%>%
 # fig 2. Boxplots of two treatments
 
 #total seeds produced across all fruits collected for a plant 
-seed_land%>%group_by(trmnt, ID)%>%
-  summarize(sum_seed=sum(total.seeds))%>%
-  ggplot(aes(trmnt ,sum_seed ))+geom_boxplot()+ theme_bw()+
+seed_land%>% 
+  mutate(trmnt = fct_recode(trmnt, "SP" = "hp", "OP"="op"))%>%
+  group_by(trmnt, ID)%>%
+  summarize(mean_seed=mean(total.seeds))%>%
+  ggplot(aes(trmnt ,mean_seed ))+geom_boxplot()+ theme_bw()+
   labs(x="Treatment" ,y="Seeds Produced")+
-  ggtitle("Fig. 2: Seeds Produced per Plant by Treatment")
+  ggtitle("Fig. 3: Mean Seeds Produced per Treated Fruit")
 ####
 
 ### Supplemental plots####
