@@ -28,10 +28,12 @@ f+ geom_line(aes(linetype=Treatment), size=1.5)+
   ylab("Seed Set")  + ylim(0.5,7)+ ggtitle("Fig.1: Predicted Relationship Between Seed Set and \n Surrounding Agricultural Land-Use")+
   theme_bw() +
   theme(axis.text=element_text(size=14,color="black"),
-        axis.title=element_text(size=16))+ # change legend text size
-  theme(legend.text = element_text( size = 16,color="black"),
-                                    legend.title=element_text(size=20),
-        title=element_text(size=18))
+        axis.line = element_line(colour = "black"),
+        axis.title=element_text(size=16),
+        title=element_text(size=18),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),legend.position = "none")
 
 #### figure S1 -- gradient
 
@@ -50,7 +52,10 @@ seed_land%>%ggplot(aes(fct_reorder(site, prop.c),prop.c))+geom_point(size=8)+
   labs(x="Site" ,y="% Agriculture")+
   ggtitle("Study System Agricultural Land-use Gradient")+theme_bw()+
   theme(axis.text=element_text(size=19,color="black"),
-        axis.title=element_text(size=19),title=element_text(size=19)) # change legend text size
+        axis.title=element_text(size=19),title=element_text(size=19),
+        axis.line = element_line(colour = "black"),panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),legend.position = "none") # change legend text size
  ####################
 ###figure s1-- US & site map
 #load map package
@@ -136,10 +141,13 @@ seed_land%>%
   labs(x="Treatment" ,y="Seeds Produced")+
   ggtitle("Fig. 2: Mean Seeds Produced per Treated Fruit")+
   theme(axis.text=element_text(size=19,color="black"),
-        axis.title=element_text(size=19),title=element_text(size=19))
-####
+        axis.title=element_text(size=19),title=element_text(size=19),
+        axis.line = element_line(colour = "black"),panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),legend.position = "none")
+##########################
 
-####model object is contained in model script
+####note: model object is generated in model script
 
 #########################
 #Plotting predicted effect and actual data
@@ -165,15 +173,22 @@ sop<-s%>%filter(group=="Open Pollination")
 
 ###make plot for seed model
 ggplot(data=s, aes(x, predicted),linetype=group)+
-  geom_line(aes(linetype=group))+
+  geom_line(aes(linetype=group),size=1)+
   geom_point(data=plt_nr,aes(prop.c, (seeds/frt),shape=trmnt),position="jitter",
-             inherit.aes = FALSE)+
+             inherit.aes = FALSE,size=3)+
   geom_ribbon(data=shp,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   geom_ribbon(data=sop,aes(x=x,ymin=conf.low, ymax=conf.high),alpha = 0.3,inherit.aes = FALSE)+
   labs(shape="Treatment",linetype="Predicted Response")+
   xlab("% Agriculture")+ylab("Mean Seeds/Treated Fruit per Plant ")+
   ggtitle("Fig. 3: Effect of % Agriculture on Seed Set",
-          subtitle="Predicted Response vs. Data")
+          subtitle="Predicted Response vs. Data")+
+  theme(axis.text=element_text(size=14,color="black"),
+        axis.title=element_text(size=16),
+        title=element_text(size=18),
+        legend.text=element_text(size=14),
+        axis.line = element_line(colour = "black"),panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),legend.position = "none")
 
 #Note: I haven't figured out how to facet both the data and the predicted values by treatment
 
