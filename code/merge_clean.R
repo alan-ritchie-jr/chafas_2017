@@ -1,6 +1,25 @@
+### Merging Chamaecrista Data
 
-###Upload data
+#install.packages("tidyverse")
+library(tidyverse)#upload tidy packages
 
+###read in data from db
+library(RMariaDB) 
+#get user name and password
+source("user.R")
+source("psw.R")
+
+
+#connect to DB
+
+conn <- dbConnect(RMariaDB::MariaDB(), host = '160.94.186.138',  dbname='fragbees', user = user, password = psw, port=8889)
+dbListTables(conn)
+### put dataframes here!
+
+
+dbDisconnect(conn)
+
+###read in data frames
 pollination<-read.csv("data/pollination_2017_pp_plant_trait.csv")#pollination event data
 seed<-read.csv("data/pollination_2017_pp_fruit_seedset.csv")# seed count data
 landscape<-read.csv("data/pollination_2017_siteinfo.csv") #landscape data
@@ -8,145 +27,113 @@ event<-read.csv("data/event.csv")# environmental data for visits
   # also contains a measure of time between treatement days 
 
 
-### Merging Data
-#install.packages("tidyverse")
-library(tidyverse)#upload tidy packages
-
-
-
-
-
-########################################################
-#Generate floral abundance and density for pollination data
-########################################################
 
 #Separate date column in pollination into month, day, and year columns
 
 pollination$dateMDY<-pollination$date
-pollination<-separate(pollination, "date", c("month", "day", "year"), sep = "/")
-#edit pollination data frame
-
-pollination<-pollination[!is.na(pollination$ID),] #drop NA rows
+poll<-separate(pollination, "date", c("month", "day", "year"), sep = "/")
 
 
-# New column for area of plot
-pollination$area<-ifelse(pollination$plot== "hi", 6.93, 692.82)
-pollination$area
-
-### Create flower abundance per site, per plot, per round, 
-
-
-poll_n<-pollination%>%
-  group_by(site,round,plot) %>%
-  mutate(.,chafas_ab=sum(flowers))%>% #generate chafas abundance for plot
-  mutate(.,chafas_dens=chafas_ab/area)%>% #generate chafas flowers per m^2 
-  nest() #retains all other columns!
-poll_n # a nested data frame
-# examine data to check
-
-         
-poll_m<-poll_n%>%
-  unnest()
-         
 ###############################
 #Merging Tables into Dataframe
 ###############################
-## merge event and pollination by date and site
-poll_m<-merge(poll_m, event, c("month", "day", "year", "site","round"))
-
-nrow(poll_m)
-### check for missing observations; each site needs 90 observations, except for henningson and nygard which will have 30
-nrow(poll_m[which(poll_m$site=="braaten"),])
-nrow(poll_m[which(poll_m$site=="grohn"),])
-nrow(poll_m[which(poll_m$site=="howe"),])
-nrow(poll_m[which(poll_m$site=="silis"),])
-nrow(poll_m[which(poll_m$site=="staples"),])
-nrow(poll_m[which(poll_m$site=="woltjer"),])
-nrow(poll_m[which(poll_m$site=="nelson"),])
-nrow(poll_m[which(poll_m$site=="rudningen"),])
-nrow(poll_m[which(poll_m$site=="henningson"),])
-nrow(poll_m[which(poll_m$site=="nygard"),])
-### check event ID
-nrow(poll_m[which(poll_m$eventID.y==100001),]) ### 30 plants should have this event ID
-
-### create new dataframe to clean and export for sql called poll_o
-poll_o<-poll_m
-### drop columns event environment columns
-poll_o<-poll_o[,-25:-36]
-### drop redundant mmddyyy column & area calc columns
-poll_o<-poll_o[,-20:-23]
-### drop date, site, round, which are contained in event ID
-poll_o<-poll_o[,-1:-5]
-poll_o$prevplantID<-NULL
-poll_o$position<-NULL
-### rename plantID to position; it reflects plants position at sampling event, not actual unique ID
-names(poll_o)[names(poll_o) == 'eventID.y'] <- 'eventID'
-names(poll_o)[names(poll_o) == 'plantID'] <- 'plantposition'
-names(poll_o)[names(poll_o) == 'ID'] <- 'uniqueID'
-
-poll_o$eventID<-as.factor(poll_o$eventID)
-poll_o$uniqueID<-as.factor(poll_o$uniqueID)
-
-### create unique ID based on eventID and uniqueID
-poll_o<-poll_o%>% arrange(eventID,uniqueID)%>%
-   tibble::rowid_to_column("pollID2")
-poll_o$prevplantID<-NULL
-### add
- poll_o$pollID2<- poll_o$pollID2+20000
- 
-### check that primary key has all unique values
-
-nrow(poll_o)
+## merge event and pollination by date and site, and remove low density plots
+poll_site<-merge(poll, event, c("month", "day", "year", "site","round"))%>%filter(plot=="hi")
 
 
-### write cleaned csv to upload to sql database
-write.csv(poll_o, "output/poll_db.csv")
+#ID check
+#each ID should be listed no more than 4 times!
+poll_check<-poll_site%>%group_by(ID)%>%summarize(n=n())
+max(poll_check$n) #we're good!
+
+### check for missing observations; each of the 8 sites needs 60 observations, except for henningson and nygard which will have 30
+nrow(poll_site[which(poll_site$site=="braaten"),])
+nrow(poll_site[which(poll_site$site=="grohn"),])
+nrow(poll_site[which(poll_site$site=="howe"),])
+nrow(poll_site[which(poll_site$site=="silis"),])
+nrow(poll_site[which(poll_site$site=="staples"),])
+nrow(poll_site[which(poll_site$site=="woltjer"),])
+nrow(poll_site[which(poll_site$site=="nelson"),])
+nrow(poll_site[which(poll_site$site=="rudningen"),])
+
+#2 sites, henningson and nygard were dropped from the study, and will only have 15
+nrow(poll_site[which(poll_site$site=="henningson"),])
+nrow(poll_site[which(poll_site$site=="nygard"),])
 
 
-#merge seed and pollination data by round and og.plantposition to associate fruit data with plant unique ID
-seed_poll<-merge(poll_m,seed, c("round","og.plantposition"))
+#extract IDs
+IDs<-poll_site%>%select(ID,round,orig_plant_position,plot)
+####
 
-nrow(seed) ##check to make sure no rows were dropped
+####
+#to do: 7/17: add in IDs to the seed data to make things more straightforward.
+
+#######
+###seed checks
+######
+# due to herbivory, plants were moved around to accomodate loss. 
+# therefore, some plants were replaced with new plants
+#or plants were moved from the low density plot to the high density plot between rounds 2&3
+# to keep track of this, I had to assign unique IDs to all plants in the pollination data
+# before this I used a plants position at a site as its ID
+# if a plant was moved from its original location or replaced, it was given a second tag with this information
+# thus when seed data was colelcted, the ID consisted of only the plants "current","former", and "original"position
+###the metadata contain a synopsis of what these variables mean
+# but for the data, it
+#a plants original plant position (orig_plant_position) and the fruit treatment round (round) link it to the pollination data
+# no original position and round should be repeated, while a plants current position could have  These are linked to true unique IDs.
+#
+
+seed_ID<-seed%>%left_join(IDs,by=c("round","orig_plant_position"))
+
+#check if seed has any round/original plant position combos not included in IDs; 
+seed_ID_check<-seed%>%anti_join(IDs,by=c("round","orig_plant_position"))
+
+
+seed_check<-seed_ID%>%
+  group_by(ID,orig_plant_position,round)%>%
+  summarise(prev_n=n_distinct(prev_plant_position),present_n=n_distinct(plant_position))
+
+#make sure no ID in the seed data frame is represented more than 4 times
+#this would indicate that our IDs were missassigned
+seed_check2<-seed_check%>%group_by(ID)%>%summarize(n=n())
+max(seed_check2$n) #we're good!
+
+# the st 23 og plant position (plant 203)occupied position st 23 rds 1-2 and then st 14 rds 3-4; ID=203 
+# plant originally in st 14 was nt
+# the st 25 og plant position (plant 205) occupied position st 25 rds 1-2 and then st 10 rds 3-4; 
+# plant originally in st 10 was nt
+poll_site$prev_plant_position<-as.character(poll_site$prev_plant_position)
+poll_site$prev_plant_position[is.na(poll_site$prev_plant_position)] <- "na"
+
+poll_check<-poll_site%>%
+group_by(orig_plant_position,round,prev_plant_position,plant_position)%>%
+  summarise()
+
+#check and see if there are any seed data not in the plant data
+seed_poll_check<-anti_join(seed_check,poll_check)
+
+
+#merge seed and pollination data by round and og.plantposition 
+#round and orig_plant_position are a unique identifier for the fruit count data
+seed_poll<-right_join(poll_site,seed, c("round","orig_plant_position"))
+
+#run anti_join to confirm that all round/orig_plant_position combinations
+#contained in seed are contained in poll_site
+seed_poll2<-anti_join(seed,poll_site,c("round","orig_plant_position"))%>%
+  group_by(orig_plant_position,round,prev_plant_position,plant_position)%>%summarize()
+# all observations in poll_site
+
+
+nrow(seed) ##check to make sure no seed observation rows were dropped
 nrow(seed_poll)### good
 
-
-# If nrow turns up different numbers-->
-##Check for mismatched nrow by creating second data frame with all.y = TRUE in merge , and locating discrepencies
-#seed_poll1[which(seed_poll1$round=="1"),]
-#seed_poll[which(seed_poll$round=="1"),]
-#seed_poll1[which(seed_poll1$round=="2"),]
-#seed_poll[which(seed_poll$round=="2"),]
-#seed_poll1[which(seed_poll1$round=="3"),]
-#seed_poll[which(seed_poll$round=="3"),]##missing 1 observation
-#seed_poll1[which(seed_poll1$round=="4"),]
-#seed_poll[which(seed_poll$round=="4"),]##missing 2 observations
-
-### Now let's edit seed_poll into a usable dataframe for the database
-### we'll only want to retain pollID and eventID
-
-seed_p<-seed_poll
-ncol(seed_p)# check number columns pre drop
-###drop all columns except fruitID, pollID, collection MDY (year.y, etc.), and the seed data
-### all event and plant info is contained in the other IDs.
-colnames(seed_p)
-###rename the collection date columns because you want that info, yo
-
-names(seed_p)[names(seed_p) == 'year.y'] <- 'coll.year'
-names(seed_p)[names(seed_p) == 'month.y'] <- 'coll.month'
-names(seed_p)[names(seed_p) == 'day.y'] <- 'coll.day'
-names(seed_p)[names(seed_p)== 'observer.y']<-'seed.counter'
-colnames(seed_p)
-drops <- c(,"type" ,"AM.PM", "start.time", "end.time",              
-           "temp.start"," temp.end","windstart.mean", "windend.mean" ,          
-          "windstart.max", "windend.max", "sky", "notes.y",
-  "eventID.x", "CHECK.total.ovules","CHECK.row.sum", "Ratio.CHECK.Total.Total","Ratio..row.sum.total")
-seed_land<-seed_land[ , !(names(seed_land) %in% drops)]
-ncol(seed_p)
-
-
+### do some joining to figure out if any ID stuff got miss-assigned
+seed_ID<-seed_poll%>%filter(plot=="hi")%>%
+  select(ID,plant_position.x,plant_position.y,orig_plant_position,prev_plant_position.x,prev_plant_position.y,round)
 
 ######
-### compare newly created data frames with seed _land to make sure data wasn't lost.
+### compare newly created data frames with seed_land to make sure data wasn't lost.
 ############################################
 
 
@@ -159,21 +146,15 @@ nrow(seed_land) # check to make sure new df has the same number of observations 
 
 seed_land<-seed_land[!(seed_land$trmnt=="nt"),]
 ##drop NA from seed counts; one fruit was too undeveloped to count seeds on
-seed_land<-seed_land[!(seed_land$CHECK.row.sum=="#VALUE!"),]
+seed_land<-seed_land[!(seed_land$CHECK_row_sum=="#VALUE!"),]
 
 seed_land<-transform(seed_land, round=as.factor(round))## make round a factor
-##
-###drop round 4
-#seed_land<-seed_land[!(seed_land$round=="4"),]
-
 
 ####
 #Drop henningson and nygard; not enought data points
 seed_land<-seed_land[!(seed_land$site=="nygard"),]
 seed_land<-seed_land[!(seed_land$site=="henningson"),]
-
-
-#Drop
+seed_land<-seed_land%>%filter(plot=="hi")
 
 #Drop extraneous data check columns by name
 ncol(seed_land)# check number columns pre drop
