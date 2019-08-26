@@ -8,8 +8,7 @@ library(MASS)
 library(car)
 library(tidyverse)
 
-#upload plant data(flowers treated, fruits removed, etc.)
-pollination<-read.csv("data/pollination_2017_pp_plant_trait.csv")
+
 
 #upload seed data merged with the environmental data
 seed_land<-read.csv("data/seed_land.csv")
