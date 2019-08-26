@@ -1,11 +1,11 @@
-site,state,county,region,ha,latitude,longitude,type,owner,prop.c
-henningson,MN,Big stone,southwest,37.03,45.30652731,-96.28737158,restoration,Henningson,46.68
-nelson,MN,Kandiyohi,southeast,27.07,45.35289989,-95.11923718,restoration,Nelson,29.27
-rudningen,MN,Kandiyohi,southeast,19.61,45.32725376,-95.179023,restoration,Rudningen,44.6
-woltjer,MN,Kandiyohi,southeast,37.35,45.2031085,-95.15279139,restoration,Woltjer,73.98
-braaten,MN,Pope,Southeast,60.78,45.52294733,-95.43028883,restoration,Braaten,21.28
-staples,MN,Pope,southeast,31.85,45.73565365,-95.70543263,restoration,Staples,75
-howe,MN,Stevens,southwest,20.23,45.48410794,-96.21506241,restoration,Howe,68.7
-silis,MN,Stevens,southwest,61.84,45.4506899,-96.13250298,restoration,Silis,81.81
-nygard,MN,Swift,southwest,35.36,45.27196477,-96.06446752,restoration,Nygard,56.02
-grohn,MN,Traverse,west,38.36,45.84275291,-96.51404348,restoration,Grohn,84
+"","site","state","county","region","ha","latitude","longitude","type","owner","prop.c"
+"1","henningson","MN","Big stone","southwest",37.03,45.30652731,-96.28737158,"restoration","Henningson",46.68
+"2","nelson","MN","Kandiyohi","southeast",27.07,45.35289989,-95.11923718,"restoration","Nelson",29.27
+"3","rudningen","MN","Kandiyohi","southeast",19.61,45.32725376,-95.179023,"restoration","Rudningen",44.6
+"4","woltjer","MN","Kandiyohi","southeast",37.35,45.2031085,-95.15279139,"restoration","Woltjer",73.98
+"5","braaten","MN","Pope","Southeast",60.78,45.52294733,-95.43028883,"restoration","Braaten",21.28
+"6","staples","MN","Pope","southeast",31.85,45.73565365,-95.70543263,"restoration","Staples",75
+"7","howe","MN","Stevens","southwest",20.23,45.48410794,-96.21506241,"restoration","Howe",68.7
+"8","silis","MN","Stevens","southwest",61.84,45.4506899,-96.13250298,"restoration","Silis",81.81
+"9","nygard","MN","Swift","southwest",35.36,45.27196477,-96.06446752,"restoration","Nygard",56.02
+"10","grohn","MN","Traverse","west",38.36,45.84275291,-96.51404348,"restoration","Grohn",84

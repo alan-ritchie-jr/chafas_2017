@@ -46,7 +46,7 @@ n_distinct(seed_land$ID)
 tot_seed_tbl<-seed_land%>%
   filter(plot=="hi")%>%
   group_by(trmnt,ID)%>%
-  summarise(sum_seeds=sum(total.seeds), n_fruit=n(), seeds_fruit=sum_seeds/n_fruit)%>%
+  summarise(sum_seeds=sum(total_seeds), n_fruit=n(), seeds_fruit=sum_seeds/n_fruit)%>%
   group_by(trmnt)%>%
   summarise(n_plants=n(),total_fruit=sum(n_fruit),sd_fruit=sd(n_fruit),mean_seeds=mean(seeds_fruit),
             mean_fruit=mean(n_fruit), sum_seeds=sum(sum_seeds),sd_mean_seeds=sd(seeds_fruit),

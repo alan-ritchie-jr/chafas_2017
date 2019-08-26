@@ -1,4 +1,4 @@
-eventID,round,month,day,year,site,type,AM/PM ,start.time,end.time,temp.start,temp.end,windstart.mean,windend.mean,windstart.max,windend.max,sky,notes
+eventID,round,month,day,year,site,type,AM/PM ,start_time,end_time,temp_start,temp_end,windstart_mean,windend_mean,windstart_max,windend_max,sky,notes
 100001,1,8,8,2017,nelson,pollination,AM,9:42,9:56,22.2,25.6,1.9,1.8,2.9,3.4,clear,had to troubleshoot fence and locate second plot
 100002,1,8,8,2017,rudningen,pollination,AM,8:15,9:10,18.3,21.1,3,3,5,5,clear,
 100003,1,8,11,2017,staples,pollination,AM,10:01,11:42,24.4,26.1,2.4,3.3.,4.5,6.1,clear,tagging and marking
